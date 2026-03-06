@@ -9,6 +9,7 @@ import (
 	aw "github.com/cryptx/cryptx-cli/internal/appwrite"
 	"github.com/cryptx/cryptx-cli/internal/session"
 	"github.com/cryptx/cryptx-cli/internal/tui"
+	"github.com/cryptx/cryptx-cli/internal/waha"
 )
 
 func main() {
@@ -32,8 +33,14 @@ func main() {
 		}
 	}
 
+	// ── Initialise WAHA client (optional — nil when base URL not set) ─────
+	var wahaClient *waha.Client
+	if cfg.WAHABaseURL != "" {
+		wahaClient = waha.NewClient(cfg.WAHABaseURL, cfg.WAHAAPIKey, cfg.WAHASession)
+	}
+
 	// ── Build and run the TUI ─────────────────────────────────────────────
-	app := tui.NewApp(svc, sess)
+	app := tui.NewApp(svc, wahaClient, sess)
 
 	p := tea.NewProgram(app)
 

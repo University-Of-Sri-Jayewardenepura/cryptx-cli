@@ -16,7 +16,8 @@ const (
 	EventSchoolHackathon              // previously EventHackathon
 	EventUniversityHackathon          // university hackathon
 	EventDesignathon
-	EventCompose // custom email compose
+	EventCompose         // custom email compose
+	EventGroupAnalyser   // WhatsApp group membership analysis
 )
 
 // menuItems defines the display info for each menu option.
@@ -31,6 +32,7 @@ var menuItems = []struct {
 	{EventUniversityHackathon, "3", "University Hackathon", "University teams competing in hacking challenges"},
 	{EventDesignathon, "4", "Designathon", "University design competition teams"},
 	{EventCompose, "5", "Compose Email", "Send a custom email via Resend or pop"},
+	{EventGroupAnalyser, "6", "Group Analyser", "Check WhatsApp group membership & generate report"},
 }
 
 // MenuModel is the main menu screen.
@@ -83,6 +85,8 @@ func (m MenuModel) Update(msg tea.Msg) (MenuModel, tea.Cmd) {
 			return m, func() tea.Msg { return MenuSelectMsg{Event: EventDesignathon} }
 		case "5":
 			return m, func() tea.Msg { return MenuSelectMsg{Event: EventCompose} }
+		case "6":
+			return m, func() tea.Msg { return MenuSelectMsg{Event: EventGroupAnalyser} }
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		}
@@ -128,7 +132,7 @@ func (m MenuModel) View() string {
 	b.WriteString("\n")
 	b.WriteString(Muted.Render("  ↑↓/jk") + Subtle.Render(" navigate  ") +
 		Muted.Render("enter") + Subtle.Render(" select  ") +
-		Muted.Render("1-5") + Subtle.Render(" quick select  ") +
+		Muted.Render("1-6") + Subtle.Render(" quick select  ") +
 		Muted.Render("q") + Subtle.Render(" quit"))
 
 	return b.String()

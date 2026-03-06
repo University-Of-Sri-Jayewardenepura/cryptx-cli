@@ -36,6 +36,16 @@ type Config struct {
 	SMTPUser string
 	SMTPPass string
 	SMTPFrom string
+
+	// WAHA — WhatsApp HTTP API for group-membership checks.
+	// All fields are optional; checks are skipped when WAHABaseURL is empty.
+	WAHABaseURL             string
+	WAHAAPIKey              string
+	WAHASession             string
+	WAHACTFGroupID          string
+	WAHASchoolHackGroupID   string
+	WAHAUniHackGroupID      string
+	WAHADesignathonGroupID  string
 }
 
 // Load returns configuration from runtime environment variables.
@@ -67,6 +77,14 @@ func Load() (*Config, error) {
 		SMTPUser: getEnv("SMTP_USER", ""),
 		SMTPPass: getEnv("SMTP_PASS", ""),
 		SMTPFrom: getEnv("SMTP_FROM", "noreply@cryptx.lk"),
+
+		WAHABaseURL:            getEnv("WAHA_BASE_URL", ""),
+		WAHAAPIKey:             getEnv("WAHA_API_KEY", ""),
+		WAHASession:            getEnv("WAHA_SESSION", "default"),
+		WAHACTFGroupID:         getEnv("WAHA_CTF_GROUP_ID", ""),
+		WAHASchoolHackGroupID:  getEnv("WAHA_SCHOOL_HACKATHON_GROUP_ID", ""),
+		WAHAUniHackGroupID:     getEnv("WAHA_UNIVERSITY_HACKATHON_GROUP_ID", ""),
+		WAHADesignathonGroupID: getEnv("WAHA_DESIGNATHON_GROUP_ID", ""),
 	}
 
 	return cfg, cfg.validate()

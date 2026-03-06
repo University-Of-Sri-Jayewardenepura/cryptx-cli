@@ -11,18 +11,20 @@ import (
 
 // DetailModel shows the full details of a single registration.
 type DetailModel struct {
-	event    EventType
-	docID    string
-	name     string
-	email    string
-	fileID   string
-	teamName string
-	content  string
-	viewport viewport.Model
-	loading  bool
-	err      string
-	width    int
-	height   int
+	event       EventType
+	docID       string
+	name        string
+	email       string
+	fileID      string
+	teamName    string
+	content     string
+	phones      []string        // all phone numbers for this registration
+	groupStatus map[string]bool // phone → in-group; nil when WAHA disabled
+	viewport    viewport.Model
+	loading     bool
+	err         string
+	width       int
+	height      int
 }
 
 // DetailLoadMsg triggers fetching a registration document.
@@ -33,14 +35,22 @@ type DetailLoadMsg struct {
 
 // DetailDataMsg delivers the rendered detail content to the model.
 type DetailDataMsg struct {
-	Event    EventType
-	DocID    string
-	Content  string
-	Name     string
-	Email    string
-	FileID   string
-	TeamName string
-	Err      error
+	Event       EventType
+	DocID       string
+	Content     string
+	Name        string
+	Email       string
+	FileID      string
+	TeamName    string
+	Phones      []string        // all phones for this registration (original format)
+	GroupStatus map[string]bool // phone → in-group; nil when WAHA disabled
+	Err         error
+}
+
+// AddToGroupMsg requests adding phones-not-in-group to the relevant WhatsApp group.
+type AddToGroupMsg struct {
+	Event  EventType
+	Phones []string // original phone strings that are NOT in the group
 }
 
 // ConfirmActionMsg triggers the confirm-payment modal for the current doc.
@@ -104,6 +114,8 @@ func (m DetailModel) Update(msg tea.Msg) (DetailModel, tea.Cmd) {
 		m.email = msg.Email
 		m.fileID = msg.FileID
 		m.teamName = msg.TeamName
+		m.phones = msg.Phones
+		m.groupStatus = msg.GroupStatus
 		m.viewport.SetContent(msg.Content)
 
 	case tea.KeyPressMsg:
@@ -135,6 +147,15 @@ func (m DetailModel) Update(msg tea.Msg) (DetailModel, tea.Cmd) {
 						FileID:   fileID,
 						TeamName: teamName,
 					}
+				}
+			}
+
+		case "a":
+			missing := m.phonesNotInGroup()
+			if len(missing) > 0 {
+				event := m.event
+				return m, func() tea.Msg {
+					return AddToGroupMsg{Event: event, Phones: missing}
 				}
 			}
 
@@ -185,6 +206,9 @@ func (m DetailModel) View() string {
 	if m.fileID != "" {
 		hints += "  " + Muted.Render("s") + Subtle.Render(" save file")
 	}
+	if len(m.phonesNotInGroup()) > 0 {
+		hints += "  " + Warning.Render("a") + Subtle.Render(" add missing to WA group")
+	}
 	b.WriteString(hints)
 	return b.String()
 }
@@ -193,10 +217,43 @@ func (m DetailModel) nameAndEmail() (string, string) {
 	return m.name, m.email
 }
 
+// phonesNotInGroup returns the phones from this registration that are not yet
+// in the relevant WhatsApp group.  Returns nil when WAHA is not enabled or
+// when all members are already in the group.
+func (m DetailModel) phonesNotInGroup() []string {
+	if m.groupStatus == nil || len(m.phones) == 0 {
+		return nil
+	}
+	var out []string
+	for _, p := range m.phones {
+		if p != "" && !m.groupStatus[p] {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // ── Rendering helpers ─────────────────────────────────────────────────────────
 
+// groupTag returns a compact badge showing whether a phone is in the group.
+// If groupStatus is nil (WAHA disabled) or the phone is empty it returns the
+// phone string unmodified.
+func groupTag(phone string, groupStatus map[string]bool) string {
+	if phone == "" {
+		return phone
+	}
+	in, ok := groupStatus[phone]
+	if !ok {
+		return phone
+	}
+	if in {
+		return phone + " " + Success.Render("✓ in group")
+	}
+	return phone + " " + Error.Render("✗ not in group")
+}
+
 // RenderCTFDetail builds a rich text view for a CTF registration.
-func RenderCTFDetail(r *models.CTFRegistration) string {
+func RenderCTFDetail(r *models.CTFRegistration, groupStatus map[string]bool) string {
 	var b strings.Builder
 
 	b.WriteString(DetailSection.Render("Payment Status") + "\n")
@@ -240,7 +297,7 @@ func RenderCTFDetail(r *models.CTFRegistration) string {
 		b.WriteString(DetailRow.Render(row("Name", m.Name)) + "\n")
 		b.WriteString(DetailRow.Render(row("Email", m.Email)) + "\n")
 		b.WriteString(DetailRow.Render(row("Contact", m.Contact)) + "\n")
-		b.WriteString(DetailRow.Render(row("WhatsApp", m.Whatsapp)) + "\n")
+		b.WriteString(DetailRow.Render(row("WhatsApp", groupTag(m.Whatsapp, groupStatus))) + "\n")
 		b.WriteString(DetailRow.Render(row("NIC", m.NIC)) + "\n")
 		if m.RegNo != "" {
 			b.WriteString(DetailRow.Render(row("Reg. No", m.RegNo)) + "\n")
@@ -268,7 +325,7 @@ func RenderCTFDetail(r *models.CTFRegistration) string {
 }
 
 // RenderSchoolHackathonDetail builds a rich text view for a school hackathon registration.
-func RenderSchoolHackathonDetail(r *models.SchoolHackathonRegistration) string {
+func RenderSchoolHackathonDetail(r *models.SchoolHackathonRegistration, groupStatus map[string]bool) string {
 	var b strings.Builder
 
 	b.WriteString(DetailSection.Render("Registration Info") + "\n")
@@ -284,7 +341,7 @@ func RenderSchoolHackathonDetail(r *models.SchoolHackathonRegistration) string {
 	b.WriteString(DetailRow.Render(row("School", r.LeaderSchoolName)) + "\n")
 	b.WriteString(DetailRow.Render(row("Grade", r.LeaderGrade)) + "\n")
 	b.WriteString(DetailRow.Render(row("Email", r.LeaderEmail)) + "\n")
-	b.WriteString(DetailRow.Render(row("Contact", r.LeaderContactNumber)) + "\n")
+	b.WriteString(DetailRow.Render(row("Contact", groupTag(r.LeaderContactNumber, groupStatus))) + "\n")
 	if r.LeaderNIC != "" {
 		b.WriteString(DetailRow.Render(row("NIC", r.LeaderNIC)) + "\n")
 	}
@@ -307,7 +364,7 @@ func RenderSchoolHackathonDetail(r *models.SchoolHackathonRegistration) string {
 		b.WriteString(DetailRow.Render(row("School", m.SchoolName)) + "\n")
 		b.WriteString(DetailRow.Render(row("Grade", m.Grade)) + "\n")
 		b.WriteString(DetailRow.Render(row("Email", m.Email)) + "\n")
-		b.WriteString(DetailRow.Render(row("Contact", m.Contact)) + "\n")
+		b.WriteString(DetailRow.Render(row("Contact", groupTag(m.Contact, groupStatus))) + "\n")
 		b.WriteString("\n")
 	}
 
@@ -328,7 +385,7 @@ func RenderSchoolHackathonDetail(r *models.SchoolHackathonRegistration) string {
 }
 
 // RenderUniversityHackathonDetail builds a rich text view for a university hackathon registration.
-func RenderUniversityHackathonDetail(r *models.UniversityHackathonRegistration) string {
+func RenderUniversityHackathonDetail(r *models.UniversityHackathonRegistration, groupStatus map[string]bool) string {
 	var b strings.Builder
 
 	b.WriteString(DetailSection.Render("Registration Info") + "\n")
@@ -343,7 +400,7 @@ func RenderUniversityHackathonDetail(r *models.UniversityHackathonRegistration) 
 	b.WriteString(DetailRow.Render(row("University", r.LeaderUniversity)) + "\n")
 	b.WriteString(DetailRow.Render(row("Email", r.LeaderEmail)) + "\n")
 	b.WriteString(DetailRow.Render(row("Contact", r.LeaderContact)) + "\n")
-	b.WriteString(DetailRow.Render(row("WhatsApp", r.LeaderWhatsapp)) + "\n")
+	b.WriteString(DetailRow.Render(row("WhatsApp", groupTag(r.LeaderWhatsapp, groupStatus))) + "\n")
 	b.WriteString(DetailRow.Render(row("NIC", r.LeaderNIC)) + "\n")
 	if r.LeaderRegNo != "" {
 		b.WriteString(DetailRow.Render(row("Reg. No", r.LeaderRegNo)) + "\n")
@@ -367,6 +424,7 @@ func RenderUniversityHackathonDetail(r *models.UniversityHackathonRegistration) 
 		b.WriteString(DetailRow.Render(row("University", m.University)) + "\n")
 		b.WriteString(DetailRow.Render(row("Email", m.Email)) + "\n")
 		b.WriteString(DetailRow.Render(row("Contact", m.Contact)) + "\n")
+		b.WriteString(DetailRow.Render(row("WhatsApp", groupTag(m.Whatsapp, groupStatus))) + "\n")
 		b.WriteString("\n")
 	}
 
@@ -377,7 +435,7 @@ func RenderUniversityHackathonDetail(r *models.UniversityHackathonRegistration) 
 }
 
 // RenderDesignathonDetail builds a rich text view for a designathon registration.
-func RenderDesignathonDetail(r *models.DesignathonRegistration) string {
+func RenderDesignathonDetail(r *models.DesignathonRegistration, groupStatus map[string]bool) string {
 	var b strings.Builder
 
 	b.WriteString(DetailSection.Render("Registration Info") + "\n")
@@ -393,7 +451,7 @@ func RenderDesignathonDetail(r *models.DesignathonRegistration) string {
 	b.WriteString(DetailRow.Render(row("Full Name", r.Member1FullName)) + "\n")
 	b.WriteString(DetailRow.Render(row("University", r.Member1University)) + "\n")
 	b.WriteString(DetailRow.Render(row("Email", r.Member1Email)) + "\n")
-	b.WriteString(DetailRow.Render(row("Phone", r.Member1Phone)) + "\n")
+	b.WriteString(DetailRow.Render(row("Phone", groupTag(r.Member1Phone, groupStatus))) + "\n")
 	b.WriteString(DetailRow.Render(row("Reg. No", r.Member1RegNo)) + "\n")
 	b.WriteString(DetailRow.Render(row("NIC", r.Member1NIC)) + "\n\n")
 
@@ -412,7 +470,7 @@ func RenderDesignathonDetail(r *models.DesignathonRegistration) string {
 		b.WriteString(DetailRow.Render(row("Full Name", m.FullName)) + "\n")
 		b.WriteString(DetailRow.Render(row("University", m.University)) + "\n")
 		b.WriteString(DetailRow.Render(row("Email", m.Email)) + "\n")
-		b.WriteString(DetailRow.Render(row("Phone", m.Phone)) + "\n")
+		b.WriteString(DetailRow.Render(row("Phone", groupTag(m.Phone, groupStatus))) + "\n")
 		b.WriteString(DetailRow.Render(row("Reg. No", m.RegNo)) + "\n")
 		b.WriteString(DetailRow.Render(row("NIC", m.NIC)) + "\n\n")
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/cryptx/cryptx-cli/internal/email"
 	"github.com/cryptx/cryptx-cli/internal/models"
 	"github.com/cryptx/cryptx-cli/internal/session"
+	"github.com/cryptx/cryptx-cli/internal/waha"
 )
 
 // Screen identifies which screen is currently active.
@@ -29,6 +30,7 @@ const (
 	ScreenDetail
 	ScreenModal
 	ScreenCompose
+	ScreenAnalyser
 )
 
 // App is the root Bubble Tea model that owns all child models and manages
@@ -39,7 +41,8 @@ type App struct {
 	height int
 
 	// services
-	svc *aw.Services
+	svc  *aw.Services
+	waha *waha.Client
 
 	// child models
 	login   LoginModel
@@ -50,6 +53,7 @@ type App struct {
 	detail  DetailModel
 	modal   ConfirmModel
 	compose ComposeModel
+	analyser AnalyserModel
 
 	// saved state for returning from detail back to list
 	activeEvent EventType
@@ -68,10 +72,11 @@ type toastClearMsg struct{}
 
 // NewApp creates a new root application model.
 // If sess is non-nil the user is already authenticated and the menu is shown.
-func NewApp(svc *aw.Services, sess *session.Session) App {
+func NewApp(svc *aw.Services, wahaClient *waha.Client, sess *session.Session) App {
 	app := App{
-		svc:   svc,
-		sess:  sess,
+		svc:  svc,
+		waha: wahaClient,
+		sess: sess,
 		login: NewLoginModel(),
 	}
 	if sess != nil {
@@ -134,6 +139,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case ScreenModal:
 			updated, cmd := a.modal.Update(msg)
 			a.modal = updated
+			cmds = append(cmds, cmd)
+		case ScreenAnalyser:
+			updated, cmd := a.analyser.Update(msg)
+			a.analyser = updated
 			cmds = append(cmds, cmd)
 		}
 
@@ -219,6 +228,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.screen = ScreenCompose
 			return a, a.compose.Init()
 		}
+		if msg.Event == EventGroupAnalyser {
+			a.analyser = NewAnalyserModel(a.width, a.height)
+			a.screen = ScreenAnalyser
+			return a, tea.Batch(a.analyser.Init(), a.doAnalyse())
+		}
 		a.activeEvent = msg.Event
 		a.list = NewListModel(msg.Event, a.width, a.height)
 		a.screen = ScreenList
@@ -284,6 +298,26 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.screen = ScreenDetail
 		return a, nil
 
+	// ── Add-to-group action (from detail screen) ──────────────────────────
+	case AddToGroupMsg:
+		return a, a.doAddToGroup(msg)
+
+	case addToGroupDoneMsg:
+		if msg.err != nil {
+			a.toast = "Add to group failed: " + msg.err.Error()
+			a.toastErr = true
+		} else {
+			a.toast = msg.ok
+			a.toastErr = false
+		}
+		// Reload detail to refresh group-membership badges.
+		if a.activeDocID != "" {
+			a.detail = NewDetailModel(a.activeEvent, a.activeDocID, a.width, a.height)
+			a.screen = ScreenDetail
+			cmds = append(cmds, a.detail.Init())
+		}
+		cmds = append(cmds, clearToastCmd())
+
 	// ── Back navigation ───────────────────────────────────────────────────
 	case BackMsg:
 		switch a.screen {
@@ -292,6 +326,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case ScreenList:
 			a.screen = ScreenMenu
 		case ScreenCompose:
+			a.screen = ScreenMenu
+		case ScreenAnalyser:
 			a.screen = ScreenMenu
 		case ScreenMenu:
 			return a, tea.Quit
@@ -384,6 +420,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updated, cmd := a.compose.Update(msg)
 		a.compose = updated
 		cmds = append(cmds, cmd)
+	case ScreenAnalyser:
+		updated, cmd := a.analyser.Update(msg)
+		a.analyser = updated
+		cmds = append(cmds, cmd)
 	}
 
 	return a, tea.Batch(cmds...)
@@ -409,6 +449,8 @@ func (a App) View() tea.View {
 		content = a.modal.View()
 	case ScreenCompose:
 		content = a.compose.View()
+	case ScreenAnalyser:
+		content = a.analyser.View()
 	}
 
 	if a.toast != "" {
@@ -589,6 +631,8 @@ func (a App) loadListData(msg ListLoadMsg) tea.Cmd {
 
 func (a App) loadDetailData(msg DetailLoadMsg) tea.Cmd {
 	svc := a.svc
+	wahaClient := a.waha
+	cfg := svc.Config()
 	return func() (tm tea.Msg) {
 		defer func() {
 			if r := recover(); r != nil {
@@ -597,6 +641,8 @@ func (a App) loadDetailData(msg DetailLoadMsg) tea.Cmd {
 		}()
 		var content, name, email, fileID, teamName string
 		var err error
+		var groupStatus map[string]bool
+		var phones []string
 
 		switch msg.Event {
 		case EventCTF:
@@ -604,7 +650,11 @@ func (a App) loadDetailData(msg DetailLoadMsg) tea.Cmd {
 			if e != nil {
 				err = e
 			} else {
-				content = RenderCTFDetail(r)
+				phones = nonEmpty(r.LeaderWhatsapp, r.Member2Whatsapp, r.Member3Whatsapp, r.Member4Whatsapp)
+				if wahaClient != nil && wahaClient.IsEnabled() && cfg.WAHACTFGroupID != "" {
+					groupStatus, _ = wahaClient.CheckPhones(cfg.WAHACTFGroupID, phones)
+				}
+				content = RenderCTFDetail(r, groupStatus)
 				name = r.LeaderName
 				email = r.LeaderEmail
 				fileID = r.PaymentSlipFileId
@@ -618,7 +668,11 @@ func (a App) loadDetailData(msg DetailLoadMsg) tea.Cmd {
 			if e != nil {
 				err = e
 			} else {
-				content = RenderSchoolHackathonDetail(r)
+				phones = nonEmpty(r.LeaderContactNumber, r.Member2ContactNumber, r.Member3ContactNumber, r.Member4ContactNumber)
+				if wahaClient != nil && wahaClient.IsEnabled() && cfg.WAHASchoolHackGroupID != "" {
+					groupStatus, _ = wahaClient.CheckPhones(cfg.WAHASchoolHackGroupID, phones)
+				}
+				content = RenderSchoolHackathonDetail(r, groupStatus)
 				name = r.LeaderFullName
 				email = r.LeaderEmail
 				fileID = r.TeamLogoFileId
@@ -629,7 +683,11 @@ func (a App) loadDetailData(msg DetailLoadMsg) tea.Cmd {
 			if e != nil {
 				err = e
 			} else {
-				content = RenderUniversityHackathonDetail(r)
+				phones = nonEmpty(r.LeaderWhatsapp, r.Member2Whatsapp, r.Member3Whatsapp, r.Member4Whatsapp)
+				if wahaClient != nil && wahaClient.IsEnabled() && cfg.WAHAUniHackGroupID != "" {
+					groupStatus, _ = wahaClient.CheckPhones(cfg.WAHAUniHackGroupID, phones)
+				}
+				content = RenderUniversityHackathonDetail(r, groupStatus)
 				name = r.LeaderName
 				email = r.LeaderEmail
 				fileID = r.TeamLogoFileId
@@ -640,7 +698,11 @@ func (a App) loadDetailData(msg DetailLoadMsg) tea.Cmd {
 			if e != nil {
 				err = e
 			} else {
-				content = RenderDesignathonDetail(r)
+				phones = nonEmpty(r.Member1Phone, r.Member2Phone, r.Member3Phone)
+				if wahaClient != nil && wahaClient.IsEnabled() && cfg.WAHADesignathonGroupID != "" {
+					groupStatus, _ = wahaClient.CheckPhones(cfg.WAHADesignathonGroupID, phones)
+				}
+				content = RenderDesignathonDetail(r, groupStatus)
 				name = r.Member1FullName
 				email = r.Member1Email
 				fileID = r.TeamLogoFileId
@@ -649,16 +711,29 @@ func (a App) loadDetailData(msg DetailLoadMsg) tea.Cmd {
 		}
 
 		return DetailDataMsg{
-			Event:    msg.Event,
-			DocID:    msg.DocID,
-			Content:  content,
-			Name:     name,
-			Email:    email,
-			FileID:   fileID,
-			TeamName: teamName,
-			Err:      err,
+			Event:       msg.Event,
+			DocID:       msg.DocID,
+			Content:     content,
+			Name:        name,
+			Email:       email,
+			FileID:      fileID,
+			TeamName:    teamName,
+			Phones:      phones,
+			GroupStatus: groupStatus,
+			Err:         err,
 		}
 	}
+}
+
+// nonEmpty returns only the non-empty strings from the provided list.
+func nonEmpty(phones ...string) []string {
+	var out []string
+	for _, p := range phones {
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func (a App) doConfirmPayment(event EventType, docID string) tea.Cmd {
@@ -877,6 +952,216 @@ func ConfirmCTFRegistration(svc *aw.Services, r *models.CTFRegistration) error {
 		TeamName:         r.TeamName,
 		RegistrationType: r.RegistrationType,
 	})
+}
+
+// ── Add-to-group ──────────────────────────────────────────────────────────────
+
+type addToGroupDoneMsg struct {
+	ok  string
+	err error
+}
+
+func (a App) doAddToGroup(msg AddToGroupMsg) tea.Cmd {
+	wahaClient := a.waha
+	cfg := a.svc.Config()
+	return func() (tm tea.Msg) {
+		defer func() {
+			if r := recover(); r != nil {
+				tm = addToGroupDoneMsg{err: fmt.Errorf("unexpected error: %v", r)}
+			}
+		}()
+		if wahaClient == nil || !wahaClient.IsEnabled() {
+			return addToGroupDoneMsg{err: fmt.Errorf("WAHA is not configured")}
+		}
+		var groupID string
+		switch msg.Event {
+		case EventCTF:
+			groupID = cfg.WAHACTFGroupID
+		case EventSchoolHackathon:
+			groupID = cfg.WAHASchoolHackGroupID
+		case EventUniversityHackathon:
+			groupID = cfg.WAHAUniHackGroupID
+		case EventDesignathon:
+			groupID = cfg.WAHADesignathonGroupID
+		}
+		if groupID == "" {
+			return addToGroupDoneMsg{err: fmt.Errorf("no WhatsApp group configured for this event")}
+		}
+		if err := wahaClient.AddParticipants(groupID, msg.Phones); err != nil {
+			return addToGroupDoneMsg{err: err}
+		}
+		return addToGroupDoneMsg{ok: fmt.Sprintf("✓ Added %d number(s) to group", len(msg.Phones))}
+	}
+}
+
+// ── Group analyser ────────────────────────────────────────────────────────────
+
+func (a App) doAnalyse() tea.Cmd {
+	svc := a.svc
+	wahaClient := a.waha
+	cfg := svc.Config()
+	return func() (tm tea.Msg) {
+		defer func() {
+			if r := recover(); r != nil {
+				tm = analyserDoneMsg{err: fmt.Errorf("unexpected error: %v", r)}
+			}
+		}()
+
+		type eventSpec struct {
+			event   EventType
+			label   string
+			groupID string
+		}
+		specs := []eventSpec{
+			{EventCTF, "CTF Registrations", cfg.WAHACTFGroupID},
+			{EventSchoolHackathon, "School Hackathon", cfg.WAHASchoolHackGroupID},
+			{EventUniversityHackathon, "University Hackathon", cfg.WAHAUniHackGroupID},
+			{EventDesignathon, "Designathon", cfg.WAHADesignathonGroupID},
+		}
+
+		var evReports []EventGroupReport
+
+		for _, spec := range specs {
+			ev := EventGroupReport{Label: spec.label, GroupID: spec.groupID}
+
+			if spec.groupID == "" {
+				ev.Err = "no group ID configured"
+				evReports = append(evReports, ev)
+				continue
+			}
+			if wahaClient == nil || !wahaClient.IsEnabled() {
+				ev.Err = "WAHA not configured"
+				evReports = append(evReports, ev)
+				continue
+			}
+
+			// One API call per group to fetch the full participant set.
+			participantSet, err := wahaClient.GetParticipantSet(spec.groupID)
+			if err != nil {
+				ev.Err = err.Error()
+				evReports = append(evReports, ev)
+				continue
+			}
+
+			// Paginate through all registrations.
+			page := 0
+			fetched := 0
+			for {
+				var newTeams []TeamGroupResult
+				var total int
+				var pageErr error
+
+				switch spec.event {
+				case EventCTF:
+					regs, t, e := svc.ListCTF(page, "", "")
+					total, pageErr = t, e
+					for _, r := range regs {
+						tr := TeamGroupResult{DocID: r.ID, TeamName: r.DisplayName()}
+						for _, pair := range []struct{ name, phone string }{
+							{r.LeaderName, r.LeaderWhatsapp},
+							{r.Member2Name, r.Member2Whatsapp},
+							{r.Member3Name, r.Member3Whatsapp},
+							{r.Member4Name, r.Member4Whatsapp},
+						} {
+							if pair.phone == "" {
+								continue
+							}
+							tr.Members = append(tr.Members, MemberGroupResult{
+								Name:    pair.name,
+								Phone:   pair.phone,
+								InGroup: participantSet[waha.NormalizePhone(pair.phone)],
+							})
+						}
+						newTeams = append(newTeams, tr)
+					}
+
+				case EventSchoolHackathon:
+					regs, t, e := svc.ListSchoolHackathon(page, "")
+					total, pageErr = t, e
+					for _, r := range regs {
+						tr := TeamGroupResult{DocID: r.ID, TeamName: r.DisplayName()}
+						for _, pair := range []struct{ name, phone string }{
+							{r.LeaderFullName, r.LeaderContactNumber},
+							{r.Member2FullName, r.Member2ContactNumber},
+							{r.Member3FullName, r.Member3ContactNumber},
+							{r.Member4FullName, r.Member4ContactNumber},
+						} {
+							if pair.phone == "" {
+								continue
+							}
+							tr.Members = append(tr.Members, MemberGroupResult{
+								Name:    pair.name,
+								Phone:   pair.phone,
+								InGroup: participantSet[waha.NormalizePhone(pair.phone)],
+							})
+						}
+						newTeams = append(newTeams, tr)
+					}
+
+				case EventUniversityHackathon:
+					regs, t, e := svc.ListUniversityHackathon(page, "")
+					total, pageErr = t, e
+					for _, r := range regs {
+						tr := TeamGroupResult{DocID: r.ID, TeamName: r.DisplayName()}
+						for _, pair := range []struct{ name, phone string }{
+							{r.LeaderName, r.LeaderWhatsapp},
+							{r.Member2Name, r.Member2Whatsapp},
+							{r.Member3Name, r.Member3Whatsapp},
+							{r.Member4Name, r.Member4Whatsapp},
+						} {
+							if pair.phone == "" {
+								continue
+							}
+							tr.Members = append(tr.Members, MemberGroupResult{
+								Name:    pair.name,
+								Phone:   pair.phone,
+								InGroup: participantSet[waha.NormalizePhone(pair.phone)],
+							})
+						}
+						newTeams = append(newTeams, tr)
+					}
+
+				case EventDesignathon:
+					regs, t, e := svc.ListDesignathon(page, "")
+					total, pageErr = t, e
+					for _, r := range regs {
+						tr := TeamGroupResult{DocID: r.ID, TeamName: r.DisplayName()}
+						for _, pair := range []struct{ name, phone string }{
+							{r.Member1FullName, r.Member1Phone},
+							{r.Member2FullName, r.Member2Phone},
+							{r.Member3FullName, r.Member3Phone},
+						} {
+							if pair.phone == "" {
+								continue
+							}
+							tr.Members = append(tr.Members, MemberGroupResult{
+								Name:    pair.name,
+								Phone:   pair.phone,
+								InGroup: participantSet[waha.NormalizePhone(pair.phone)],
+							})
+						}
+						newTeams = append(newTeams, tr)
+					}
+				}
+
+				if pageErr != nil {
+					ev.Err = pageErr.Error()
+					break
+				}
+
+				ev.Teams = append(ev.Teams, newTeams...)
+				fetched += len(newTeams)
+				if fetched >= total || len(newTeams) == 0 {
+					break
+				}
+				page++
+			}
+
+			evReports = append(evReports, ev)
+		}
+
+		return analyserDoneMsg{report: BuildGroupReport(evReports)}
+	}
 }
 
 // appwriteErrVerbose returns an error string with Appwrite HTTP status code and
