@@ -1,0 +1,26 @@
+# Environment and secrets
+.env
+.env.*.local
+
+# Build artifacts
+cryptx-cli
+cryptx-cli.exe
+dist/
+
+# Go tooling
+*.test
+*.out
+coverage.out
+cover.out
+
+# macOS / Windows noise
+.DS_Store
+Thumbs.db
+
+# Editor and workspace files
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.temp

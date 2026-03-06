@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Registration Confirmed — CryptX 2.0</title>
+  <style>
+    body {
+      margin: 0; padding: 0;
+      background-color: #0a0a0f;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      color: #e2e8f0;
+    }
+    .wrapper {
+      max-width: 600px;
+      margin: 40px auto;
+      background: #12121a;
+      border: 1px solid #1e2033;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #0f172a 0%, #1a1a2e 100%);
+      padding: 36px 40px;
+      text-align: center;
+      border-bottom: 1px solid #22d3ee33;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 28px;
+      letter-spacing: 0.1em;
+      color: #22d3ee;
+      text-transform: uppercase;
+    }
+    .header p {
+      margin: 8px 0 0;
+      font-size: 14px;
+      color: #94a3b8;
+      letter-spacing: 0.05em;
+    }
+    .badge {
+      display: inline-block;
+      margin: 20px auto 0;
+      padding: 6px 18px;
+      background: #22d3ee22;
+      border: 1px solid #22d3ee55;
+      border-radius: 20px;
+      font-size: 12px;
+      color: #22d3ee;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+    }
+    .content {
+      padding: 36px 40px;
+    }
+    .greeting {
+      font-size: 18px;
+      font-weight: 600;
+      color: #f1f5f9;
+      margin-bottom: 12px;
+    }
+    .message {
+      font-size: 15px;
+      line-height: 1.7;
+      color: #94a3b8;
+      margin-bottom: 28px;
+    }
+    .details-card {
+      background: #0f0f1a;
+      border: 1px solid #1e2033;
+      border-radius: 8px;
+      padding: 20px 24px;
+      margin-bottom: 28px;
+    }
+    .details-card h3 {
+      margin: 0 0 14px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #64748b;
+    }
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #1e203366;
+      font-size: 14px;
+    }
+    .detail-row:last-child { border-bottom: none; }
+    .detail-label { color: #64748b; }
+    .detail-value { color: #e2e8f0; font-weight: 500; }
+    .status-confirmed {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: #16a34a22;
+      border: 1px solid #16a34a55;
+      border-radius: 20px;
+      font-size: 12px;
+      color: #4ade80;
+      font-weight: 600;
+    }
+    .cta {
+      text-align: center;
+      margin: 28px 0;
+    }
+    .cta a {
+      display: inline-block;
+      padding: 12px 28px;
+      background: linear-gradient(135deg, #22d3ee, #0ea5e9);
+      color: #0a0a0f;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.05em;
+      text-decoration: none;
+      border-radius: 6px;
+    }
+    .note {
+      font-size: 13px;
+      color: #475569;
+      line-height: 1.6;
+      padding: 16px;
+      background: #0a0a0f;
+      border-left: 3px solid #22d3ee44;
+      border-radius: 0 4px 4px 0;
+      margin-bottom: 24px;
+    }
+    .footer {
+      text-align: center;
+      padding: 24px 40px;
+      border-top: 1px solid #1e2033;
+      font-size: 12px;
+      color: #334155;
+    }
+    .footer a { color: #22d3ee; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <h1>CryptX 2.0</h1>
+      <p>Registration Confirmation</p>
+      <div class="badge">{{.EventName}}</div>
+    </div>
+
+    <div class="content">
+      <p class="greeting">Hi {{.RecipientName}},</p>
+      <p class="message">
+        Great news! Your registration for <strong>CryptX 2.0 — {{.EventName}}</strong>
+        has been reviewed and your payment has been confirmed. You're officially in!
+      </p>
+
+      <div class="details-card">
+        <h3>Registration Details</h3>
+        {{if .TeamName}}
+        <div class="detail-row">
+          <span class="detail-label">Team Name</span>
+          <span class="detail-value">{{.TeamName}}</span>
+        </div>
+        {{end}}
+        <div class="detail-row">
+          <span class="detail-label">Registered As</span>
+          <span class="detail-value">{{.RecipientName}}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Email</span>
+          <span class="detail-value">{{.RecipientEmail}}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Registration Type</span>
+          <span class="detail-value">{{.RegistrationType}}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Confirmed At</span>
+          <span class="detail-value">{{.ConfirmedAt}}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Status</span>
+          <span class="status-confirmed">✓ Confirmed</span>
+        </div>
+      </div>
+
+      <div class="note">
+        Please keep this email as proof of your registration. Further details
+        about the event venue, schedule, and requirements will be shared closer
+        to the event date.
+      </div>
+
+      <p class="message">
+        If you have any questions, feel free to reach out to the CryptX team.
+        We look forward to seeing you there!
+      </p>
+    </div>
+
+    <div class="footer">
+      <p>© 2026 CryptX 2.0 — All rights reserved.</p>
+      <p>This is an automated message. Do not reply to this email.</p>
+    </div>
+  </div>
+</body>
+</html>
