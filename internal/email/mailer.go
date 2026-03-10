@@ -209,14 +209,12 @@ func buildConfirmationEmail(data ConfirmationData) (html, from, subject string) 
 func buildCTFConfirmEmail(data ConfirmationData) (string, string, string) {
 	const tmplStr = `
 <div style="font-family:sans-serif;max-width:600px;margin:0 auto;background-color:#0f0a0b;color:#f0e6e8;padding:0;border:1px solid #3b1520;">
-  <!-- Header -->
   <div style="background:linear-gradient(135deg,#1a0510 0%,#2d0918 100%);padding:32px 32px 24px;border-bottom:1px solid #e11d4833;">
     <h1 style="margin:0 0 4px;font-size:26px;letter-spacing:0.08em;color:#e11d48;font-weight:800;text-transform:uppercase;">CryptX 2.0</h1>
     <p style="margin:0;font-size:12px;color:#94a3b8;letter-spacing:0.1em;text-transform:uppercase;">Capture The Flag</p>
-    <div style="display:inline-block;margin-top:14px;padding:5px 16px;background:#e11d4822;border:1px solid #e11d4855;border-radius:20px;font-size:11px;color:#e11d48;letter-spacing:0.14em;text-transform:uppercase;">✓ Registration Confirmed</div>
+    <div style="display:inline-block;margin-top:14px;padding:5px 16px;background:#e11d4822;border:1px solid #e11d4855;font-size:11px;color:#e11d48;letter-spacing:0.14em;text-transform:uppercase;">✓ Registration Confirmed</div>
   </div>
 
-  <!-- Body -->
   <div style="padding:32px;">
     <p style="margin:0 0 12px;font-size:17px;font-weight:600;color:#f1e0e3;">Hi {{.RecipientName}},</p>
     <p style="margin:0 0 24px;font-size:14px;color:#c09ca0;line-height:1.7;">
@@ -225,36 +223,41 @@ func buildCTFConfirmEmail(data ConfirmationData) (string, string, string) {
       You're officially in!
     </p>
 
-    <!-- Details card -->
-    <div style="background:#1a0d10;border:1px solid #3b1520;border-radius:8px;padding:20px 24px;margin-bottom:24px;">
+    <div style="background:#1a0d10;border:1px solid #3b1520;padding:20px 24px;margin-bottom:24px;">
       <p style="margin:0 0 14px;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#64748b;">Registration Details</p>
-      {{if .TeamName}}
-      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #3b152066;font-size:13px;">
-        <span style="color:#875568;">Team Name</span><span style="color:#f0e6e8;font-weight:500;">{{.TeamName}}</span>
-      </div>
-      {{end}}
-      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #3b152066;font-size:13px;">
-        <span style="color:#875568;">Name</span><span style="color:#f0e6e8;font-weight:500;">{{.RecipientName}}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #3b152066;font-size:13px;">
-        <span style="color:#875568;">Type</span><span style="color:#f0e6e8;font-weight:500;">{{.RegistrationType}}</span>
-      </div>
-      {{if .DocID}}
-      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #3b152066;font-size:13px;">
-        <span style="color:#875568;">Reference ID</span><span style="color:#f0e6e8;font-family:monospace;font-size:11px;">{{.DocID}}</span>
-      </div>
-      {{end}}
-      <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;">
-        <span style="color:#875568;">Confirmed At</span><span style="color:#f0e6e8;font-weight:500;">{{.ConfirmedAt}}</span>
-      </div>
+      
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:13px;">
+        {{if .TeamName}}
+        <tr>
+          <td align="left" style="padding:8px 0;border-bottom:1px solid #3b152066;color:#875568;">Team Name</td>
+          <td align="right" style="padding:8px 0;border-bottom:1px solid #3b152066;color:#f0e6e8;font-weight:500;">{{.TeamName}}</td>
+        </tr>
+        {{end}}
+        <tr>
+          <td align="left" style="padding:8px 0;border-bottom:1px solid #3b152066;color:#875568;">Name</td>
+          <td align="right" style="padding:8px 0;border-bottom:1px solid #3b152066;color:#f0e6e8;font-weight:500;">{{.RecipientName}}</td>
+        </tr>
+        <tr>
+          <td align="left" style="padding:8px 0;border-bottom:1px solid #3b152066;color:#875568;">Type</td>
+          <td align="right" style="padding:8px 0;border-bottom:1px solid #3b152066;color:#f0e6e8;font-weight:500;">{{.RegistrationType}}</td>
+        </tr>
+        {{if .DocID}}
+        <tr>
+          <td align="left" style="padding:8px 0;border-bottom:1px solid #3b152066;color:#875568;">Reference ID</td>
+          <td align="right" style="padding:8px 0;border-bottom:1px solid #3b152066;color:#f0e6e8;font-family:monospace;font-size:11px;">{{.DocID}}</td>
+        </tr>
+        {{end}}
+        <tr>
+          <td align="left" style="padding:8px 0;color:#875568;">Confirmed At</td>
+          <td align="right" style="padding:8px 0;color:#f0e6e8;font-weight:500;">{{.ConfirmedAt}}</td>
+        </tr>
+      </table>
     </div>
 
     <p style="margin:0 0 24px;font-size:13px;color:#875568;line-height:1.6;padding:14px;background:#160909;border-left:3px solid #e11d4844;">
-      Please keep this email as proof of your registration. Further details about
-      the event venue, schedule, and requirements will be shared closer to the event date.
+      You and your members will be added to the whatsapp group shortly. Further details about the event venue, schedule, and requirements will be shared via the whatsapp group. 
     </p>
 
-    <!-- CTA -->
     <div style="text-align:center;margin:28px 0;">
       <a href="https://link.cryptx.lk/whatsapp"
          style="display:inline-block;background-color:#e11d48;color:#ffffff;text-decoration:none;padding:12px 28px;font-weight:bold;font-size:14px;letter-spacing:0.04em;">
@@ -263,9 +266,8 @@ func buildCTFConfirmEmail(data ConfirmationData) (string, string, string) {
     </div>
   </div>
 
-  <!-- Footer -->
   <div style="padding:20px 32px;border-top:1px solid #3b1520;text-align:center;">
-    <p style="margin:0;font-size:13px;color:#c09ca0;line-height:1.7;">Best regards,<br/><strong style="color:#f0e6e8;">The CryptX Team</strong></p>
+    <p style="margin:0;font-size:13px;color:#c09ca0;line-height:1.7;">Best regards,<br/><strong style="color:#f0e6e8;">The CryptX 2.0 Organizing Committee</strong></p>
     <p style="margin:10px 0 0;font-size:11px;color:#4a3036;">© 2026 ICTS — University of Sri Jayewardenepura</p>
   </div>
 </div>`
