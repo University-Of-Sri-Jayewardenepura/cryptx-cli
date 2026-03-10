@@ -76,11 +76,13 @@ var (
 			Bold(true)
 )
 
-// StatusBadge returns the appropriate styled badge for a confirmation status string.
+// StatusBadge returns the appropriate styled badge for a payment status string.
 func StatusBadge(status string) string {
 	switch status {
-	case "confirmed":
-		return BadgeConfirmed.Render("✓ confirmed")
+	case "verified":
+		return BadgeConfirmed.Render("✓ verified")
+	case "rejected":
+		return Error.Render("✕ rejected")
 	default:
 		return BadgePending.Render("⏳ pending")
 	}

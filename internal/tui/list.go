@@ -343,7 +343,7 @@ func buildTable(rows []RegistrationRow, width int) table.Model {
 			fmt.Sprintf("%d", i+1),
 			truncate(r.DisplayName, cols[1].Width),
 			r.RegistrationType,
-			r.Status,
+			statusLabel(r.Status),
 			r.CreatedAt,
 		})
 	}
@@ -424,6 +424,22 @@ func filterStyle(f FilterMode) string {
 		return Error.Render(" " + f.Label() + " ")
 	default:
 		return Muted.Render("[" + f.Label() + "]")
+	}
+}
+
+// statusLabel converts a raw DB payment status value to a human-readable label.
+func statusLabel(s string) string {
+	switch s {
+	case "verified":
+		return "✓ verified"
+	case "rejected":
+		return "✕ rejected"
+	case "pending_verification":
+		return "⏳ pending"
+	case "—":
+		return s
+	default:
+		return s
 	}
 }
 
