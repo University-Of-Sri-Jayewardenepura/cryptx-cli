@@ -302,6 +302,18 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case AddToGroupMsg:
 		return a, a.doAddToGroup(msg)
 
+	// ── Reject merch payment ───────────────────────────────────────────────
+	case RejectActionMsg:
+		if msg.Event == EventMerch {
+			return a, a.doRejectMerch(msg.DocID)
+		}
+
+	// ── Dispatch merch order ───────────────────────────────────────────────
+	case DispatchActionMsg:
+		if msg.Event == EventMerch {
+			return a, a.doDispatchMerch(msg.DocID)
+		}
+
 	case addToGroupDoneMsg:
 		if msg.err != nil {
 			a.toast = "Add to group failed: " + msg.err.Error()
@@ -623,6 +635,13 @@ func (a App) loadListData(msg ListLoadMsg) tea.Cmd {
 			for _, r := range regs {
 				rows = append(rows, RegistrationRowFromDesignathon(r))
 			}
+		case EventMerch:
+			orders, t, e := svc.ListMerch(msg.Page, msg.Filter, msg.Search)
+			err = e
+			total = t
+			for _, o := range orders {
+				rows = append(rows, RegistrationRowFromMerch(o))
+			}
 		}
 
 		return ListDataMsg{Rows: rows, TotalDocs: total, Err: err}
@@ -708,6 +727,17 @@ func (a App) loadDetailData(msg DetailLoadMsg) tea.Cmd {
 				fileID = r.TeamLogoFileId
 				teamName = r.TeamName
 			}
+		case EventMerch:
+			o, e := svc.GetMerch(msg.DocID)
+			if e != nil {
+				err = e
+			} else {
+				content = RenderMerchDetail(o)
+				name = o.FullName
+				email = o.Email
+				fileID = o.PaymentSlipFileId
+				teamName = o.FullName + "_" + o.ProductName
+			}
 		}
 
 		return DetailDataMsg{
@@ -737,6 +767,13 @@ func nonEmpty(phones ...string) []string {
 }
 
 func (a App) doConfirmPayment(event EventType, docID string) tea.Cmd {
+	// For merch, delegate entirely to the richer doConfirmMerchCmd which
+	// already has access to the App receiver and handles both pre-order and
+	// full-payment cases.
+	if event == EventMerch {
+		return a.doConfirmMerchCmd(docID)
+	}
+
 	svc := a.svc
 	cfg := svc.Config()
 	return func() (tm tea.Msg) {
@@ -745,33 +782,31 @@ func (a App) doConfirmPayment(event EventType, docID string) tea.Cmd {
 				tm = actionDoneMsg{err: fmt.Errorf("unexpected error: %v", r), reloadDetail: true}
 			}
 		}()
-		if event != EventCTF {
-			return actionDoneMsg{err: fmt.Errorf("payment confirmation is only available for CTF registrations"), reloadDetail: true}
-		}
-
-		r, err := svc.ConfirmCTF(docID)
-		if err != nil {
-			return actionDoneMsg{err: err, reloadDetail: true}
-		}
-
-		emailErr := email.SendConfirmation(cfg, email.ConfirmationData{
-			EventName:        "CTF",
-			RecipientName:    r.LeaderName,
-			RecipientEmail:   r.LeaderEmail,
-			TeamName:         r.TeamName,
-			RegistrationType: r.RegistrationType,
-			ConfirmedAt:      time.Now().Format("02 Jan 2006, 15:04 MST"),
-		})
-		if emailErr != nil {
+		if event == EventCTF {
+			r, err := svc.ConfirmCTF(docID)
+			if err != nil {
+				return actionDoneMsg{err: err, reloadDetail: true}
+			}
+			emailErr := email.SendConfirmation(cfg, email.ConfirmationData{
+				EventName:        "CTF",
+				RecipientName:    r.LeaderName,
+				RecipientEmail:   r.LeaderEmail,
+				TeamName:         r.TeamName,
+				RegistrationType: r.RegistrationType,
+				ConfirmedAt:      time.Now().Format("02 Jan 2006, 15:04 MST"),
+			})
+			if emailErr != nil {
+				return actionDoneMsg{
+					ok:           fmt.Sprintf("Confirmed! Email to %s failed: %v", r.LeaderEmail, emailErr),
+					reloadDetail: true,
+				}
+			}
 			return actionDoneMsg{
-				ok:           fmt.Sprintf("Confirmed! Email to %s failed: %v", r.LeaderEmail, emailErr),
+				ok:           fmt.Sprintf("✓ Confirmed & email sent to %s", r.LeaderEmail),
 				reloadDetail: true,
 			}
 		}
-		return actionDoneMsg{
-			ok:           fmt.Sprintf("✓ Confirmed & email sent to %s", r.LeaderEmail),
-			reloadDetail: true,
-		}
+		return actionDoneMsg{err: fmt.Errorf("payment confirmation not available for this event"), reloadDetail: true}
 	}
 }
 
@@ -793,6 +828,8 @@ func (a App) doDelete(event EventType, docID string) tea.Cmd {
 			err = svc.DeleteUniversityHackathon(docID)
 		case EventDesignathon:
 			err = svc.DeleteDesignathon(docID)
+		case EventMerch:
+			err = svc.DeleteMerch(docID)
 		}
 		if err != nil {
 			return actionDoneMsg{err: err, goList: true}
@@ -821,6 +858,8 @@ func (a App) doDownload(msg DownloadFileMsg) tea.Cmd {
 			data, err = svc.DownloadUniversityHackathonLogo(msg.FileID)
 		case EventDesignathon:
 			data, err = svc.DownloadTeamLogo(msg.FileID)
+		case EventMerch:
+			data, err = svc.DownloadMerchPaymentSlip(msg.FileID)
 		default:
 			return downloadDoneMsg{err: fmt.Errorf("no downloadable file for this event type")}
 		}
@@ -953,6 +992,169 @@ func ConfirmCTFRegistration(svc *aw.Services, r *models.CTFRegistration) error {
 		RegistrationType: r.RegistrationType,
 	})
 }
+
+// ── Merch action helpers ───────────────────────────────────────────────────────
+
+
+func (a App) doConfirmMerchCmd(docID string) tea.Cmd {
+	svc := a.svc
+	cfg := svc.Config()
+	return func() (tm tea.Msg) {
+		defer func() {
+			if r := recover(); r != nil {
+				tm = actionDoneMsg{err: fmt.Errorf("unexpected error: %v", r), reloadDetail: true}
+			}
+		}()
+		// Fetch to determine current status.
+		o, err := svc.GetMerch(docID)
+		if err != nil {
+			return actionDoneMsg{err: err, reloadDetail: true}
+		}
+		switch o.PaymentStatus {
+		case models.MerchStatusPendingPreOrder:
+			updated, err := svc.ConfirmMerchPreOrder(docID)
+			if err != nil {
+				return actionDoneMsg{err: err, reloadDetail: true}
+			}
+			emailErr := email.SendMerchPreOrderConfirm(cfg, email.MerchEmailData{
+				RecipientName:  updated.FullName,
+				RecipientEmail: updated.Email,
+				ProductName:    updated.ProductName,
+				Size:           updated.Size,
+				Quantity:       updated.Quantity,
+				TotalPrice:     updated.TotalPrice,
+				PaymentOption:  updated.PaymentOption,
+				DeliveryMethod: updated.DeliveryMethod,
+				DocID:          updated.ID,
+			})
+			if emailErr != nil {
+				return actionDoneMsg{
+					ok:           fmt.Sprintf("Pre-order confirmed! Email to %s failed: %v", updated.Email, emailErr),
+					reloadDetail: true,
+				}
+			}
+			return actionDoneMsg{
+				ok:           fmt.Sprintf("✓ Pre-order confirmed & email sent to %s", updated.Email),
+				reloadDetail: true,
+			}
+		case models.MerchStatusPendingFullPayment:
+			updated, err := svc.ConfirmMerchFullPayment(docID)
+			if err != nil {
+				return actionDoneMsg{err: err, reloadDetail: true}
+			}
+			emailErr := email.SendMerchFullPaymentConfirm(cfg, email.MerchEmailData{
+				RecipientName:  updated.FullName,
+				RecipientEmail: updated.Email,
+				ProductName:    updated.ProductName,
+				Size:           updated.Size,
+				Quantity:       updated.Quantity,
+				TotalPrice:     updated.TotalPrice,
+				PaymentOption:  updated.PaymentOption,
+				DeliveryMethod: updated.DeliveryMethod,
+				DocID:          updated.ID,
+			})
+			if emailErr != nil {
+				return actionDoneMsg{
+					ok:           fmt.Sprintf("Full payment confirmed! Email to %s failed: %v", updated.Email, emailErr),
+					reloadDetail: true,
+				}
+			}
+			return actionDoneMsg{
+				ok:           fmt.Sprintf("✓ Full payment confirmed & email sent to %s", updated.Email),
+				reloadDetail: true,
+			}
+		default:
+			return actionDoneMsg{
+				err:          fmt.Errorf("order is in state %q — nothing to confirm", o.PaymentStatus),
+				reloadDetail: true,
+			}
+		}
+	}
+}
+
+func (a App) doRejectMerch(docID string) tea.Cmd {
+	svc := a.svc
+	return func() (tm tea.Msg) {
+		defer func() {
+			if r := recover(); r != nil {
+				tm = actionDoneMsg{err: fmt.Errorf("unexpected error: %v", r), reloadDetail: true}
+			}
+		}()
+		o, err := svc.GetMerch(docID)
+		if err != nil {
+			return actionDoneMsg{err: err, reloadDetail: true}
+		}
+		switch o.PaymentStatus {
+		case models.MerchStatusPendingPreOrder:
+			if _, err := svc.RejectMerchPreOrder(docID); err != nil {
+				return actionDoneMsg{err: err, reloadDetail: true}
+			}
+			return actionDoneMsg{ok: "✓ Pre-order payment rejected", reloadDetail: true}
+		case models.MerchStatusPendingFullPayment:
+			if _, err := svc.RejectMerchFullPayment(docID); err != nil {
+				return actionDoneMsg{err: err, reloadDetail: true}
+			}
+			return actionDoneMsg{ok: "✓ Full payment rejected", reloadDetail: true}
+		default:
+			return actionDoneMsg{
+				err:          fmt.Errorf("order is in state %q — nothing to reject", o.PaymentStatus),
+				reloadDetail: true,
+			}
+		}
+	}
+}
+
+func (a App) doDispatchMerch(docID string) tea.Cmd {
+	svc := a.svc
+	cfg := svc.Config()
+	return func() (tm tea.Msg) {
+		defer func() {
+			if r := recover(); r != nil {
+				tm = actionDoneMsg{err: fmt.Errorf("unexpected error: %v", r), reloadDetail: true}
+			}
+		}()
+		o, err := svc.GetMerch(docID)
+		if err != nil {
+			return actionDoneMsg{err: err, reloadDetail: true}
+		}
+		if !o.CanBeDispatched() {
+			return actionDoneMsg{
+				err:          fmt.Errorf("order cannot be dispatched: current status is %q", o.PaymentStatus),
+				reloadDetail: true,
+			}
+		}
+		if _, err := svc.DispatchMerch(docID); err != nil {
+			return actionDoneMsg{err: err, reloadDetail: true}
+		}
+		// Send the dispatch email.
+		emailData := email.MerchEmailData{
+			RecipientName:  o.FullName,
+			RecipientEmail: o.Email,
+			ProductName:    o.ProductName,
+			Size:           o.Size,
+			Quantity:       o.Quantity,
+			TotalPrice:     o.TotalPrice,
+			DeliveryMethod: o.DeliveryMethod,
+			DocID:          o.ID,
+			// Collection details come from env vars (set in config).
+			EventDate: cfg.MerchEventDate,
+			EventTime: cfg.MerchEventTime,
+			Venue:     cfg.MerchEventVenue,
+		}
+		emailErr := email.SendMerchDispatch(cfg, emailData)
+		if emailErr != nil {
+			return actionDoneMsg{
+				ok:           fmt.Sprintf("Dispatched! Email to %s failed: %v", o.Email, emailErr),
+				reloadDetail: true,
+			}
+		}
+		return actionDoneMsg{
+			ok:           fmt.Sprintf("✓ Order dispatched & email sent to %s", o.Email),
+			reloadDetail: true,
+		}
+	}
+}
+
 
 // ── Add-to-group ──────────────────────────────────────────────────────────────
 

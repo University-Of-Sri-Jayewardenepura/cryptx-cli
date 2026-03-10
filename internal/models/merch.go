@@ -2,6 +2,25 @@ package models
 
 import "time"
 
+// MerchPaymentStatus represents the full payment lifecycle for a merch order.
+type MerchPaymentStatus string
+
+const (
+	// Pre-order flow
+	MerchStatusPendingPreOrder    MerchPaymentStatus = "pending_preorder_verification"
+	MerchStatusPreOrderVerified   MerchPaymentStatus = "preorder_verified"
+	MerchStatusPreOrderRejected   MerchPaymentStatus = "preorder_rejected"
+
+	// Full payment flow
+	MerchStatusPendingFullPayment     MerchPaymentStatus = "pending_full_payment_verification"
+	MerchStatusFullyPaid              MerchPaymentStatus = "fully_paid"
+	MerchStatusFullPaymentRejected    MerchPaymentStatus = "full_payment_rejected"
+
+	// Completion / admin states
+	MerchStatusDispatched MerchPaymentStatus = "dispatched"
+	MerchStatusCancelled  MerchPaymentStatus = "cancelled"
+)
+
 // MerchOrder mirrors the merch-orders Appwrite collection.
 type MerchOrder struct {
 	// Appwrite document meta
@@ -29,7 +48,7 @@ type MerchOrder struct {
 	PostalCode    string `json:"postalCode"`
 
 	// Delivery & payment
-	DeliveryMethod string `json:"deliveryMethod"` // "University Pickup" | "Courier"
+	DeliveryMethod string `json:"deliveryMethod"` // "Event Day Collection" | "Courier"
 	PaymentOption  string `json:"paymentOption"`  // "full" | "pre-order"
 
 	// Payment slip
@@ -37,8 +56,20 @@ type MerchOrder struct {
 	PaymentSlipUrl    string `json:"paymentSlipUrl,omitempty"`
 
 	// System
-	PaymentStatus PaymentStatus `json:"paymentStatus"`
-	SubmittedAt   string        `json:"submittedAt"`
+	PaymentStatus MerchPaymentStatus `json:"paymentStatus"`
+	SubmittedAt   string             `json:"submittedAt"`
+}
+
+// IsPendingVerification returns true when either a pre-order or full-payment
+// slip is awaiting operator review.
+func (o *MerchOrder) IsPendingVerification() bool {
+	return o.PaymentStatus == MerchStatusPendingPreOrder ||
+		o.PaymentStatus == MerchStatusPendingFullPayment
+}
+
+// CanBeDispatched returns true when the order is fully paid and not yet dispatched.
+func (o *MerchOrder) CanBeDispatched() bool {
+	return o.PaymentStatus == MerchStatusFullyPaid
 }
 
 // DisplayName returns a short human-readable name for list views.

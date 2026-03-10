@@ -20,12 +20,19 @@ type Config struct {
 	SchoolHackathonCollectionID     string
 	UniversityHackathonCollectionID string
 	DesignathonCollectionID         string
+	MerchCollectionID               string
 
 	// Storage bucket IDs
 	CTFBucketID          string // CTF payment slips
 	DesignathonBucketID  string // Designathon team logos
 	HackathonUniBucketID string // University hackathon logos
 	HackathonSchBucketID string // School hackathon logos
+	MerchBucketID        string // Merch payment slips
+
+	// Merch event dispatch details (used in dispatch emails).
+	MerchEventDate  string // e.g. "2026-04-05"
+	MerchEventTime  string // e.g. "09:00 AM"
+	MerchEventVenue string // e.g. "USJ Faculty of Technology"
 
 	// Resend — primary email delivery provider.
 	ResendAPIKey string
@@ -64,11 +71,17 @@ func Load() (*Config, error) {
 		SchoolHackathonCollectionID:     getEnv("APPWRITE_SCHOOL_HACKATHON_COLLECTION_ID", "hackathon-school-new"),
 		UniversityHackathonCollectionID: getEnv("APPWRITE_UNIVERSITY_HACKATHON_COLLECTION_ID", "hackathon-university-new"),
 		DesignathonCollectionID:         getEnv("APPWRITE_DESIGNATHON_COLLECTION_ID", "designathon-registrations-new"),
+		MerchCollectionID:               getEnv("APPWRITE_MERCH_COLLECTION_ID", "merch-orders"),
 
 		CTFBucketID:          getEnv("APPWRITE_CTF_BUCKET_ID", "cryptx-registrations"),
 		DesignathonBucketID:  getEnv("APPWRITE_DESIGNATHON_BUCKET_ID", "cryptx-logos-designathon"),
 		HackathonUniBucketID: getEnv("APPWRITE_HACKATHON_UNIVERSITY_BUCKET_ID", "cryptx-logos-hackathon-university"),
 		HackathonSchBucketID: getEnv("APPWRITE_HACKATHON_SCHOOL_BUCKET_ID", "cryptx-logos-hackathon-school"),
+		MerchBucketID:        getEnv("APPWRITE_MERCH_BUCKET_ID", "cryptx-merch-slips"),
+
+		MerchEventDate:  getEnv("MERCH_EVENT_DATE", ""),
+		MerchEventTime:  getEnv("MERCH_EVENT_TIME", ""),
+		MerchEventVenue: getEnv("MERCH_EVENT_VENUE", ""),
 
 		ResendAPIKey: getEnv("RESEND_API_KEY", ""),
 

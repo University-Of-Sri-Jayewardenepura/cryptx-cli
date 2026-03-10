@@ -75,6 +75,21 @@ type DownloadFileMsg struct {
 	TeamName string
 }
 
+// RejectActionMsg triggers the reject-payment modal for the current doc.
+type RejectActionMsg struct {
+	Event EventType
+	DocID string
+	Name  string
+}
+
+// DispatchActionMsg triggers the dispatch-order action for the current doc.
+type DispatchActionMsg struct {
+	Event  EventType
+	DocID  string
+	Name   string
+	Email  string
+}
+
 // NewDetailModel creates a detail model for a given registration.
 func NewDetailModel(event EventType, docID string, width, height int) DetailModel {
 	vp := viewport.New(viewport.WithWidth(width-4), viewport.WithHeight(height-6))
@@ -124,10 +139,35 @@ func (m DetailModel) Update(msg tea.Msg) (DetailModel, tea.Cmd) {
 			return m, func() tea.Msg { return BackMsg{} }
 
 		case "c":
-			if m.event == EventCTF {
+			if m.event == EventCTF || m.event == EventMerch {
 				name, email := m.nameAndEmail()
 				return m, func() tea.Msg {
 					return ConfirmActionMsg{
+						Event: m.event,
+						DocID: m.docID,
+						Name:  name,
+						Email: email,
+					}
+				}
+			}
+
+		case "x":
+			if m.event == EventMerch {
+				name, _ := m.nameAndEmail()
+				return m, func() tea.Msg {
+					return RejectActionMsg{
+						Event: m.event,
+						DocID: m.docID,
+						Name:  name,
+					}
+				}
+			}
+
+		case "p":
+			if m.event == EventMerch {
+				name, email := m.nameAndEmail()
+				return m, func() tea.Msg {
+					return DispatchActionMsg{
 						Event: m.event,
 						DocID: m.docID,
 						Name:  name,
@@ -200,6 +240,11 @@ func (m DetailModel) View() string {
 	hints := Muted.Render("↑↓/jk") + Subtle.Render(" scroll  ")
 	if m.event == EventCTF {
 		hints += Muted.Render("c") + Subtle.Render(" confirm payment  ")
+	}
+	if m.event == EventMerch {
+		hints += Muted.Render("c") + Subtle.Render(" confirm  ") +
+			Muted.Render("x") + Subtle.Render(" reject  ") +
+			Muted.Render("p") + Subtle.Render(" dispatch  ")
 	}
 	hints += Muted.Render("d") + Subtle.Render(" delete  ") +
 		Muted.Render("esc") + Subtle.Render(" back")
@@ -490,4 +535,82 @@ func RenderDesignathonDetail(r *models.DesignathonRegistration, groupStatus map[
 // row renders a label+value pair aligned with fixed label width.
 func row(label, value string) string {
 	return Label.Render(label+":") + " " + Value.Render(value)
+}
+
+// RenderMerchDetail builds a rich text view for a merch store order.
+func RenderMerchDetail(r *models.MerchOrder) string {
+	var b strings.Builder
+
+	b.WriteString(DetailSection.Render("Order Status") + "\n")
+	b.WriteString(DetailRow.Render(row("Payment Status", MerchStatusBadge(string(r.PaymentStatus)))) + "\n")
+	b.WriteString(DetailRow.Render(row("Payment Option", r.PaymentOption)) + "\n")
+	b.WriteString(DetailRow.Render(row("Submitted At", r.SubmittedAt)) + "\n")
+	b.WriteString(DetailRow.Render(row("Document ID", Muted.Render(r.ID))) + "\n\n")
+
+	b.WriteString(DetailSection.Render("Customer") + "\n")
+	b.WriteString(DetailRow.Render(row("Full Name", r.FullName)) + "\n")
+	b.WriteString(DetailRow.Render(row("Email", r.Email)) + "\n")
+	b.WriteString(DetailRow.Render(row("Phone", r.Phone)) + "\n\n")
+
+	b.WriteString(DetailSection.Render("Product") + "\n")
+	b.WriteString(DetailRow.Render(row("Product ID", r.Product)) + "\n")
+	b.WriteString(DetailRow.Render(row("Product Name", r.ProductName)) + "\n")
+	b.WriteString(DetailRow.Render(row("Size", r.Size)) + "\n")
+	b.WriteString(DetailRow.Render(row("Quantity", fmt.Sprintf("%d", r.Quantity))) + "\n")
+	b.WriteString(DetailRow.Render(row("Unit Price", fmt.Sprintf("LKR %d", r.UnitPrice))) + "\n")
+	b.WriteString(DetailRow.Render(row("Total Price", fmt.Sprintf("LKR %d", r.TotalPrice))) + "\n\n")
+
+	b.WriteString(DetailSection.Render("Delivery") + "\n")
+	b.WriteString(DetailRow.Render(row("Method", r.DeliveryMethod)) + "\n")
+	b.WriteString(DetailRow.Render(row("Address", r.StreetAddress)) + "\n")
+	b.WriteString(DetailRow.Render(row("City", r.City)) + "\n")
+	b.WriteString(DetailRow.Render(row("District", r.District)) + "\n")
+	b.WriteString(DetailRow.Render(row("Postal Code", r.PostalCode)) + "\n\n")
+
+	if r.PaymentSlipFileId != "" {
+		b.WriteString(DetailSection.Render("Payment Slip") + "\n")
+		b.WriteString(DetailRow.Render(row("File ID", Muted.Render(r.PaymentSlipFileId))) + "\n")
+		if r.PaymentSlipUrl != "" {
+			b.WriteString(DetailRow.Render(row("URL", r.PaymentSlipUrl)) + "\n")
+		}
+		b.WriteString(DetailRow.Render(Accent.Render("  Press [S] to download payment slip")) + "\n\n")
+	}
+
+	// Context-aware action hints
+	switch r.PaymentStatus {
+	case models.MerchStatusPendingPreOrder:
+		b.WriteString(DetailRow.Render(Warning.Render("  ⚡ Pre-order payment awaiting verification — press [C] to confirm or [X] to reject")) + "\n")
+	case models.MerchStatusPendingFullPayment:
+		b.WriteString(DetailRow.Render(Warning.Render("  ⚡ Full payment awaiting verification — press [C] to confirm or [X] to reject")) + "\n")
+	case models.MerchStatusFullyPaid:
+		b.WriteString(DetailRow.Render(Success.Render("  ✓ Fully paid — press [P] to dispatch this order")) + "\n")
+	case models.MerchStatusDispatched:
+		b.WriteString(DetailRow.Render(Success.Render("  ✓ Order has been dispatched")) + "\n")
+	}
+
+	return b.String()
+}
+
+// MerchStatusBadge returns a styled badge for a MerchPaymentStatus string.
+func MerchStatusBadge(status string) string {
+	switch models.MerchPaymentStatus(status) {
+	case models.MerchStatusPendingPreOrder:
+		return BadgePending.Render("⏳ pending pre-order verify")
+	case models.MerchStatusPreOrderVerified:
+		return BadgeConfirmed.Render("✓ pre-order verified")
+	case models.MerchStatusPreOrderRejected:
+		return Error.Render("✗ pre-order rejected")
+	case models.MerchStatusPendingFullPayment:
+		return BadgePending.Render("⏳ pending full pay verify")
+	case models.MerchStatusFullyPaid:
+		return BadgeConfirmed.Render("✓ fully paid")
+	case models.MerchStatusFullPaymentRejected:
+		return Error.Render("✗ full payment rejected")
+	case models.MerchStatusDispatched:
+		return Success.Render("🚚 dispatched")
+	case models.MerchStatusCancelled:
+		return Muted.Render("✗ cancelled")
+	default:
+		return Muted.Render(status)
+	}
 }

@@ -525,3 +525,328 @@ func renderSimpleTemplate(tmplStr string, data ConfirmationData) string {
 	}
 	return buf.String()
 }
+
+// ── Merch Store emails ─────────────────────────────────────────────────────────
+
+// MerchEmailData holds template variables for all merch-related emails.
+type MerchEmailData struct {
+	RecipientName  string
+	RecipientEmail string
+	ProductName    string
+	Size           string
+	Quantity       int
+	TotalPrice     int
+	PaymentOption  string // "pre-order" | "full"
+	DeliveryMethod string // "Event Day Collection" | "Courier"
+	DocID          string
+	ConfirmedAt    string
+	// Dispatch-specific — Event Day Collection
+	EventDate string
+	EventTime string
+	Venue     string
+	// Dispatch-specific — Courier
+	TrackingNumber string
+}
+
+// SendMerchPreOrderConfirm sends a pre-order payment received email.
+func SendMerchPreOrderConfirm(cfg *config.Config, data MerchEmailData) error {
+	if data.ConfirmedAt == "" {
+		data.ConfirmedAt = time.Now().Format("02 Jan 2006, 15:04 MST")
+	}
+	html, from, subject := buildMerchPreOrderEmail(data)
+	if cfg.ResendAPIKey != "" {
+		return sendViaResend(cfg.ResendAPIKey, resendPayload{
+			From:    from,
+			To:      []string{data.RecipientEmail},
+			Subject: subject,
+			HTML:    html,
+		})
+	}
+	return sendViaSMTP(cfg, data.RecipientEmail, subject, html)
+}
+
+// SendMerchFullPaymentConfirm sends a full payment confirmed email.
+func SendMerchFullPaymentConfirm(cfg *config.Config, data MerchEmailData) error {
+	if data.ConfirmedAt == "" {
+		data.ConfirmedAt = time.Now().Format("02 Jan 2006, 15:04 MST")
+	}
+	html, from, subject := buildMerchFullPaymentEmail(data)
+	if cfg.ResendAPIKey != "" {
+		return sendViaResend(cfg.ResendAPIKey, resendPayload{
+			From:    from,
+			To:      []string{data.RecipientEmail},
+			Subject: subject,
+			HTML:    html,
+		})
+	}
+	return sendViaSMTP(cfg, data.RecipientEmail, subject, html)
+}
+
+// SendMerchDispatch sends a dispatch notification email.
+// The template adapts based on DeliveryMethod: collection details for
+// "Event Day Collection", tracking info for "Courier".
+func SendMerchDispatch(cfg *config.Config, data MerchEmailData) error {
+	if data.ConfirmedAt == "" {
+		data.ConfirmedAt = time.Now().Format("02 Jan 2006, 15:04 MST")
+	}
+	html, from, subject := buildMerchDispatchEmail(data)
+	if cfg.ResendAPIKey != "" {
+		return sendViaResend(cfg.ResendAPIKey, resendPayload{
+			From:    from,
+			To:      []string{data.RecipientEmail},
+			Subject: subject,
+			HTML:    html,
+		})
+	}
+	return sendViaSMTP(cfg, data.RecipientEmail, subject, html)
+}
+
+// ── Merch email builders — amber/gold theme ────────────────────────────────────
+
+func buildMerchPreOrderEmail(data MerchEmailData) (string, string, string) {
+	const tmplStr = `
+<div style="font-family:sans-serif;max-width:600px;margin:0 auto;background-color:#0d0a02;color:#f0e8cc;padding:0;border:1px solid #4a3800;">
+  <!-- Header -->
+  <div style="background:linear-gradient(135deg,#1a1200 0%,#2a1e00 100%);padding:32px 32px 24px;border-bottom:1px solid #f59e0b33;">
+    <h1 style="margin:0 0 4px;font-size:26px;letter-spacing:0.08em;color:#f59e0b;font-weight:800;text-transform:uppercase;">CryptX 2.0</h1>
+    <p style="margin:0;font-size:12px;color:#94a3b8;letter-spacing:0.1em;text-transform:uppercase;">Merch Store</p>
+    <div style="display:inline-block;margin-top:14px;padding:5px 16px;background:#f59e0b22;border:1px solid #f59e0b55;border-radius:20px;font-size:11px;color:#f59e0b;letter-spacing:0.14em;text-transform:uppercase;">✓ Pre-Order Payment Received</div>
+  </div>
+
+  <!-- Body -->
+  <div style="padding:32px;">
+    <p style="margin:0 0 12px;font-size:17px;font-weight:600;color:#fef3c7;">Hi {{.RecipientName}},</p>
+    <p style="margin:0 0 24px;font-size:14px;color:#c09c4a;line-height:1.7;">
+      We've received your <strong style="color:#fef3c7;">pre-order payment</strong> for your CryptX 2.0 merch!
+      We'll verify it shortly. Once your full payment is received and confirmed, we'll process your order.
+    </p>
+
+    <!-- Order card -->
+    <div style="background:#1a1200;border:1px solid #4a3800;border-radius:8px;padding:20px 24px;margin-bottom:24px;">
+      <p style="margin:0 0 14px;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#64748b;">Order Details</p>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #4a380066;font-size:13px;">
+        <span style="color:#8a7040;">Product</span><span style="color:#f0e8cc;font-weight:500;">{{.ProductName}}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #4a380066;font-size:13px;">
+        <span style="color:#8a7040;">Size</span><span style="color:#f0e8cc;font-weight:500;">{{.Size}}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #4a380066;font-size:13px;">
+        <span style="color:#8a7040;">Quantity</span><span style="color:#f0e8cc;font-weight:500;">{{.Quantity}}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #4a380066;font-size:13px;">
+        <span style="color:#8a7040;">Total Price</span><span style="color:#f0e8cc;font-weight:500;">LKR {{.TotalPrice}}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #4a380066;font-size:13px;">
+        <span style="color:#8a7040;">Delivery</span><span style="color:#f0e8cc;font-weight:500;">{{.DeliveryMethod}}</span>
+      </div>
+      {{if .DocID}}
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #4a380066;font-size:13px;">
+        <span style="color:#8a7040;">Reference ID</span><span style="color:#f0e8cc;font-family:monospace;font-size:11px;">{{.DocID}}</span>
+      </div>
+      {{end}}
+      <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;">
+        <span style="color:#8a7040;">Pre-order Confirmed At</span><span style="color:#f0e8cc;font-weight:500;">{{.ConfirmedAt}}</span>
+      </div>
+    </div>
+
+    <p style="margin:0 0 24px;font-size:13px;color:#8a7040;line-height:1.6;padding:14px;background:#120e00;border-left:3px solid #f59e0b44;">
+      <strong style="color:#fef3c7;">Next step:</strong> Please submit your full payment slip via the merch store.
+      Your order will be processed only after the full payment is confirmed.
+    </p>
+  </div>
+
+  <!-- Footer -->
+  <div style="padding:20px 32px;border-top:1px solid #4a3800;text-align:center;">
+    <p style="margin:0;font-size:13px;color:#c09c4a;line-height:1.7;">Best regards,<br/><strong style="color:#f0e8cc;">The CryptX 2.0 Merch Team</strong></p>
+    <p style="margin:10px 0 0;font-size:11px;color:#3a2c00;">© 2026 ICTS — University of Sri Jayewardenepura</p>
+  </div>
+</div>`
+
+	t, _ := template.New("merch-preorder").Parse(tmplStr)
+	var buf bytes.Buffer
+	_ = t.Execute(&buf, data)
+	return buf.String(),
+		"CryptX Merch <merch@cryptx.lk>",
+		"[CryptX 2.0] Pre-Order Payment Received — " + data.ProductName
+}
+
+func buildMerchFullPaymentEmail(data MerchEmailData) (string, string, string) {
+	const tmplStr = `
+<div style="font-family:sans-serif;max-width:600px;margin:0 auto;background-color:#0d0a02;color:#f0e8cc;padding:0;border:1px solid #4a3800;">
+  <!-- Header -->
+  <div style="background:linear-gradient(135deg,#1a1200 0%,#2a1e00 100%);padding:32px 32px 24px;border-bottom:1px solid #f59e0b33;">
+    <h1 style="margin:0 0 4px;font-size:26px;letter-spacing:0.08em;color:#f59e0b;font-weight:800;text-transform:uppercase;">CryptX 2.0</h1>
+    <p style="margin:0;font-size:12px;color:#94a3b8;letter-spacing:0.1em;text-transform:uppercase;">Merch Store</p>
+    <div style="display:inline-block;margin-top:14px;padding:5px 16px;background:#22c55e22;border:1px solid #22c55e55;border-radius:20px;font-size:11px;color:#22c55e;letter-spacing:0.14em;text-transform:uppercase;">✓ Full Payment Confirmed</div>
+  </div>
+
+  <!-- Body -->
+  <div style="padding:32px;">
+    <p style="margin:0 0 12px;font-size:17px;font-weight:600;color:#fef3c7;">Hi {{.RecipientName}},</p>
+    <p style="margin:0 0 24px;font-size:14px;color:#c09c4a;line-height:1.7;">
+      Great news! Your <strong style="color:#fef3c7;">full payment</strong> for your CryptX 2.0 merch has been
+      <strong style="color:#22c55e;">confirmed</strong>. Your order is now being prepared!
+    </p>
+
+    <!-- Order card -->
+    <div style="background:#1a1200;border:1px solid #4a3800;border-radius:8px;padding:20px 24px;margin-bottom:24px;">
+      <p style="margin:0 0 14px;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#64748b;">Order Details</p>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #4a380066;font-size:13px;">
+        <span style="color:#8a7040;">Product</span><span style="color:#f0e8cc;font-weight:500;">{{.ProductName}}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #4a380066;font-size:13px;">
+        <span style="color:#8a7040;">Size</span><span style="color:#f0e8cc;font-weight:500;">{{.Size}}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #4a380066;font-size:13px;">
+        <span style="color:#8a7040;">Quantity</span><span style="color:#f0e8cc;font-weight:500;">{{.Quantity}}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #4a380066;font-size:13px;">
+        <span style="color:#8a7040;">Total Price</span><span style="color:#f0e8cc;font-weight:500;">LKR {{.TotalPrice}}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #4a380066;font-size:13px;">
+        <span style="color:#8a7040;">Delivery Method</span><span style="color:#f0e8cc;font-weight:500;">{{.DeliveryMethod}}</span>
+      </div>
+      {{if .DocID}}
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #4a380066;font-size:13px;">
+        <span style="color:#8a7040;">Reference ID</span><span style="color:#f0e8cc;font-family:monospace;font-size:11px;">{{.DocID}}</span>
+      </div>
+      {{end}}
+      <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;">
+        <span style="color:#8a7040;">Confirmed At</span><span style="color:#f0e8cc;font-weight:500;">{{.ConfirmedAt}}</span>
+      </div>
+    </div>
+
+    <p style="margin:0 0 24px;font-size:13px;color:#8a7040;line-height:1.6;padding:14px;background:#120e00;border-left:3px solid #f59e0b44;">
+      We will notify you once your order has been dispatched or is ready for collection.
+      Keep this email as proof of your purchase.
+    </p>
+  </div>
+
+  <!-- Footer -->
+  <div style="padding:20px 32px;border-top:1px solid #4a3800;text-align:center;">
+    <p style="margin:0;font-size:13px;color:#c09c4a;line-height:1.7;">Best regards,<br/><strong style="color:#f0e8cc;">The CryptX 2.0 Merch Team</strong></p>
+    <p style="margin:10px 0 0;font-size:11px;color:#3a2c00;">© 2026 ICTS — University of Sri Jayewardenepura</p>
+  </div>
+</div>`
+
+	t, _ := template.New("merch-fullpay").Parse(tmplStr)
+	var buf bytes.Buffer
+	_ = t.Execute(&buf, data)
+	return buf.String(),
+		"CryptX Merch <merch@cryptx.lk>",
+		"[CryptX 2.0] Full Payment Confirmed — Your Order is Being Prepared!"
+}
+
+func buildMerchDispatchEmail(data MerchEmailData) (string, string, string) {
+	// Two templates — one per delivery method.
+	collectionTmpl := `
+<div style="font-family:sans-serif;max-width:600px;margin:0 auto;background-color:#0d0a02;color:#f0e8cc;padding:0;border:1px solid #4a3800;">
+  <div style="background:linear-gradient(135deg,#1a1200 0%,#2a1e00 100%);padding:32px 32px 24px;border-bottom:1px solid #f59e0b33;">
+    <h1 style="margin:0 0 4px;font-size:26px;letter-spacing:0.08em;color:#f59e0b;font-weight:800;text-transform:uppercase;">CryptX 2.0</h1>
+    <p style="margin:0;font-size:12px;color:#94a3b8;letter-spacing:0.1em;text-transform:uppercase;">Merch Store — Collection Details</p>
+    <div style="display:inline-block;margin-top:14px;padding:5px 16px;background:#f59e0b22;border:1px solid #f59e0b55;border-radius:20px;font-size:11px;color:#f59e0b;letter-spacing:0.14em;text-transform:uppercase;">📦 Ready for Collection</div>
+  </div>
+
+  <div style="padding:32px;">
+    <p style="margin:0 0 12px;font-size:17px;font-weight:600;color:#fef3c7;">Hi {{.RecipientName}},</p>
+    <p style="margin:0 0 24px;font-size:14px;color:#c09c4a;line-height:1.7;">
+      Your CryptX 2.0 merch order is ready for collection at the event!
+      Please bring this email or your order reference ID on the day.
+    </p>
+
+    <div style="background:#1a1200;border:1px solid #4a3800;border-radius:8px;padding:20px 24px;margin-bottom:24px;">
+      <p style="margin:0 0 14px;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#64748b;">Collection Details</p>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #4a380066;font-size:13px;">
+        <span style="color:#8a7040;">Date</span><span style="color:#f59e0b;font-weight:600;">{{.EventDate}}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #4a380066;font-size:13px;">
+        <span style="color:#8a7040;">Time</span><span style="color:#f59e0b;font-weight:600;">{{.EventTime}}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #4a380066;font-size:13px;">
+        <span style="color:#8a7040;">Venue</span><span style="color:#f0e8cc;font-weight:500;">{{.Venue}}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #4a380066;font-size:13px;">
+        <span style="color:#8a7040;">Product</span><span style="color:#f0e8cc;font-weight:500;">{{.ProductName}} ({{.Size}} × {{.Quantity}})</span>
+      </div>
+      {{if .DocID}}
+      <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;">
+        <span style="color:#8a7040;">Reference ID</span><span style="color:#f0e8cc;font-family:monospace;font-size:11px;">{{.DocID}}</span>
+      </div>
+      {{end}}
+    </div>
+
+    <p style="margin:0;font-size:13px;color:#8a7040;line-height:1.6;padding:14px;background:#120e00;border-left:3px solid #f59e0b44;">
+      Please be on time. If you are unable to collect on the day, contact us in advance.
+    </p>
+  </div>
+
+  <div style="padding:20px 32px;border-top:1px solid #4a3800;text-align:center;">
+    <p style="margin:0;font-size:13px;color:#c09c4a;line-height:1.7;">See you at the event!<br/><strong style="color:#f0e8cc;">The CryptX 2.0 Merch Team</strong></p>
+    <p style="margin:10px 0 0;font-size:11px;color:#3a2c00;">© 2026 ICTS — University of Sri Jayewardenepura</p>
+  </div>
+</div>`
+
+	courierTmpl := `
+<div style="font-family:sans-serif;max-width:600px;margin:0 auto;background-color:#0d0a02;color:#f0e8cc;padding:0;border:1px solid #4a3800;">
+  <div style="background:linear-gradient(135deg,#1a1200 0%,#2a1e00 100%);padding:32px 32px 24px;border-bottom:1px solid #f59e0b33;">
+    <h1 style="margin:0 0 4px;font-size:26px;letter-spacing:0.08em;color:#f59e0b;font-weight:800;text-transform:uppercase;">CryptX 2.0</h1>
+    <p style="margin:0;font-size:12px;color:#94a3b8;letter-spacing:0.1em;text-transform:uppercase;">Merch Store — Shipped!</p>
+    <div style="display:inline-block;margin-top:14px;padding:5px 16px;background:#3b82f622;border:1px solid #3b82f655;border-radius:20px;font-size:11px;color:#60a5fa;letter-spacing:0.14em;text-transform:uppercase;">🚚 Order Dispatched</div>
+  </div>
+
+  <div style="padding:32px;">
+    <p style="margin:0 0 12px;font-size:17px;font-weight:600;color:#fef3c7;">Hi {{.RecipientName}},</p>
+    <p style="margin:0 0 24px;font-size:14px;color:#c09c4a;line-height:1.7;">
+      Your CryptX 2.0 merch order has been <strong style="color:#60a5fa;">dispatched</strong>!
+      It's on its way to you. Use the tracking number below to follow your delivery.
+    </p>
+
+    <div style="background:#1a1200;border:1px solid #4a3800;border-radius:8px;padding:20px 24px;margin-bottom:24px;">
+      <p style="margin:0 0 14px;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#64748b;">Shipment Details</p>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #4a380066;font-size:13px;">
+        <span style="color:#8a7040;">Product</span><span style="color:#f0e8cc;font-weight:500;">{{.ProductName}} ({{.Size}} × {{.Quantity}})</span>
+      </div>
+      {{if .TrackingNumber}}
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #4a380066;font-size:13px;">
+        <span style="color:#8a7040;">Tracking #</span><span style="color:#60a5fa;font-family:monospace;font-weight:600;">{{.TrackingNumber}}</span>
+      </div>
+      {{end}}
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #4a380066;font-size:13px;">
+        <span style="color:#8a7040;">Dispatched On</span><span style="color:#f0e8cc;font-weight:500;">{{.ConfirmedAt}}</span>
+      </div>
+      {{if .DocID}}
+      <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;">
+        <span style="color:#8a7040;">Reference ID</span><span style="color:#f0e8cc;font-family:monospace;font-size:11px;">{{.DocID}}</span>
+      </div>
+      {{end}}
+    </div>
+
+    <p style="margin:0;font-size:13px;color:#8a7040;line-height:1.6;padding:14px;background:#120e00;border-left:3px solid #60a5fa44;">
+      If you have any issues with your delivery, please contact us with your reference ID.
+    </p>
+  </div>
+
+  <div style="padding:20px 32px;border-top:1px solid #4a3800;text-align:center;">
+    <p style="margin:0;font-size:13px;color:#c09c4a;line-height:1.7;">Best regards,<br/><strong style="color:#f0e8cc;">The CryptX 2.0 Merch Team</strong></p>
+    <p style="margin:10px 0 0;font-size:11px;color:#3a2c00;">© 2026 ICTS — University of Sri Jayewardenepura</p>
+  </div>
+</div>`
+
+	var chosenTmpl string
+	var subject string
+	if data.DeliveryMethod == "Event Day Collection" {
+		chosenTmpl = collectionTmpl
+		subject = "[CryptX 2.0] Your Merch is Ready for Collection!"
+	} else {
+		chosenTmpl = courierTmpl
+		subject = "[CryptX 2.0] Your Merch Order Has Been Dispatched!"
+	}
+
+	t, _ := template.New("merch-dispatch").Parse(chosenTmpl)
+	var buf bytes.Buffer
+	_ = t.Execute(&buf, data)
+	return buf.String(),
+		"CryptX Merch <merch@cryptx.lk>",
+		subject
+}
+

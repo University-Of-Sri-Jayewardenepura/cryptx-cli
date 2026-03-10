@@ -18,6 +18,7 @@ const (
 	EventDesignathon
 	EventCompose         // custom email compose
 	EventGroupAnalyser   // WhatsApp group membership analysis
+	EventMerch           // Merch store orders
 )
 
 // menuItems defines the display info for each menu option.
@@ -33,6 +34,7 @@ var menuItems = []struct {
 	{EventDesignathon, "4", "Designathon", "University design competition teams"},
 	{EventCompose, "5", "Compose Email", "Send a custom email via Resend or pop"},
 	{EventGroupAnalyser, "6", "Group Analyser", "Check WhatsApp group membership & generate report"},
+	{EventMerch, "7", "Merch Store", "View & manage merchandise orders"},
 }
 
 // MenuModel is the main menu screen.
@@ -87,6 +89,8 @@ func (m MenuModel) Update(msg tea.Msg) (MenuModel, tea.Cmd) {
 			return m, func() tea.Msg { return MenuSelectMsg{Event: EventCompose} }
 		case "6":
 			return m, func() tea.Msg { return MenuSelectMsg{Event: EventGroupAnalyser} }
+		case "7":
+			return m, func() tea.Msg { return MenuSelectMsg{Event: EventMerch} }
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		}

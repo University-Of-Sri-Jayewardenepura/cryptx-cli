@@ -218,8 +218,8 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 			}
 
 		case "f":
-			// Payment status filter only applies to CTF.
-			if m.event == EventCTF {
+			// Payment status filter applies to CTF and Merch.
+			if m.event == EventCTF || m.event == EventMerch {
 				m.filter = (m.filter + 1) % 4
 				m.page = 0
 				m.loading = true
@@ -255,7 +255,7 @@ func (m ListModel) View() string {
 	pageInfo := Muted.Render(fmt.Sprintf("page %d / %d  (%d total)", m.page+1, maxPage(m.totalDocs), m.totalDocs))
 
 	var headerLine string
-	if m.event == EventCTF {
+	if m.event == EventCTF || m.event == EventMerch {
 		filterBadge := filterStyle(m.filter)
 		headerLine = lipgloss.JoinHorizontal(lipgloss.Left,
 			Accent.Bold(true).Render(title),
@@ -307,7 +307,7 @@ func (m ListModel) View() string {
 		Muted.Render("/") + Subtle.Render(" search  ") +
 		Muted.Render("n/p") + Subtle.Render(" page  ") +
 		Muted.Render("r") + Subtle.Render(" refresh  ")
-	if m.event == EventCTF {
+	if m.event == EventCTF || m.event == EventMerch {
 		hints += Muted.Render("f") + Subtle.Render(" filter  ")
 	}
 	hints += Muted.Render("esc") + Subtle.Render(" back")
@@ -407,6 +407,8 @@ func eventTitle(e EventType) string {
 		return "University Hackathon Registrations"
 	case EventDesignathon:
 		return "Designathon Registrations"
+	case EventMerch:
+		return "Merch Store Orders"
 	default:
 		return "CTF Registrations"
 	}
@@ -468,6 +470,22 @@ func RegistrationRowFromDesignathon(r *models.DesignathonRegistration) Registrat
 		Status:           "—",
 		CreatedAt:        r.CreatedAtTime().Format("02 Jan 2006 15:04"),
 		HasPaymentFile:   r.TeamLogoFileId != "",
+	}
+}
+
+// RegistrationRowFromMerch converts a MerchOrder model to a list row.
+func RegistrationRowFromMerch(r *models.MerchOrder) RegistrationRow {
+	payOpt := r.PaymentOption
+	if payOpt == "" {
+		payOpt = "—"
+	}
+	return RegistrationRow{
+		ID:               r.ID,
+		DisplayName:      r.DisplayName(),
+		RegistrationType: payOpt,
+		Status:           string(r.PaymentStatus),
+		CreatedAt:        r.CreatedAtTime().Format("02 Jan 2006 15:04"),
+		HasPaymentFile:   r.PaymentSlipFileId != "",
 	}
 }
 
