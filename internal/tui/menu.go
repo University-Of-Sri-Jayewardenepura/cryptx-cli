@@ -19,6 +19,7 @@ const (
 	EventCompose         // custom email compose
 	EventGroupAnalyser   // WhatsApp group membership analysis
 	EventMerch           // Merch store orders
+	EventUpgrade         // self-upgrade
 )
 
 // menuItems defines the display info for each menu option.
@@ -35,6 +36,7 @@ var menuItems = []struct {
 	{EventCompose, "5", "Compose Email", "Send a custom email via Resend or pop"},
 	{EventGroupAnalyser, "6", "Group Analyser", "Check WhatsApp group membership & generate report"},
 	{EventMerch, "7", "Merch Store", "View & manage merchandise orders"},
+	{EventUpgrade, "u", "Check for Updates", "Download and install the latest release"},
 }
 
 // MenuModel is the main menu screen.
@@ -43,6 +45,7 @@ type MenuModel struct {
 	width     int
 	height    int
 	userEmail string
+	version   string
 }
 
 // MenuSelectMsg is sent when the user picks an event type.
@@ -51,8 +54,8 @@ type MenuSelectMsg struct {
 }
 
 // NewMenuModel creates a fresh menu model.
-func NewMenuModel(userEmail string) MenuModel {
-	return MenuModel{userEmail: userEmail}
+func NewMenuModel(userEmail, version string) MenuModel {
+	return MenuModel{userEmail: userEmail, version: version}
 }
 
 func (m MenuModel) Init() tea.Cmd { return nil }
@@ -91,6 +94,8 @@ func (m MenuModel) Update(msg tea.Msg) (MenuModel, tea.Cmd) {
 			return m, func() tea.Msg { return MenuSelectMsg{Event: EventGroupAnalyser} }
 		case "7":
 			return m, func() tea.Msg { return MenuSelectMsg{Event: EventMerch} }
+		case "u":
+			return m, func() tea.Msg { return MenuSelectMsg{Event: EventUpgrade} }
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		}
@@ -102,14 +107,20 @@ func (m MenuModel) View() string {
 	var b strings.Builder
 
 	// Header strip
-	headerText := "  ◈  CryptX 2.0 — Registration Manager  "
+	headerText := fmt.Sprintf("  ◈  CryptX 2.0 — Registration Manager  ")
+	versionBadge := lipgloss.NewStyle().
+		Foreground(colorBase).
+		Background(colorAccent).
+		Bold(true).
+		Padding(0, 1).
+		Render(m.version)
 	header := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(colorAccent).
 		Background(colorSurface).
 		PaddingLeft(1).PaddingRight(1).
 		Render(headerText)
-	b.WriteString(header)
+	b.WriteString(header + " " + versionBadge)
 	b.WriteString("\n\n")
 
 	// Operator info
@@ -136,7 +147,8 @@ func (m MenuModel) View() string {
 	b.WriteString("\n")
 	b.WriteString(Muted.Render("  ↑↓/jk") + Subtle.Render(" navigate  ") +
 		Muted.Render("enter") + Subtle.Render(" select  ") +
-		Muted.Render("1-6") + Subtle.Render(" quick select  ") +
+		Muted.Render("1-7") + Subtle.Render(" quick select  ") +
+		Muted.Render("u") + Subtle.Render(" update  ") +
 		Muted.Render("q") + Subtle.Render(" quit"))
 
 	return b.String()

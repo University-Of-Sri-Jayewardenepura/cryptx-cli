@@ -3,8 +3,10 @@
 BINARY := cryptx-cli
 DIST := dist
 PLATFORMS := darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64
+# Derive version from the most recent git tag; fall back to "dev".
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 # netgo/osusergo avoid libc lookups; timetzdata embeds timezone DB into the binary.
-GO_BUILD_FLAGS := -trimpath -tags "netgo osusergo timetzdata" -ldflags "-s -w"
+GO_BUILD_FLAGS := -trimpath -tags "netgo osusergo timetzdata" -ldflags "-s -w -X main.Version=$(VERSION)"
 
 ## build: compile the CLI binary
 build:

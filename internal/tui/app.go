@@ -15,6 +15,7 @@ import (
 	"github.com/cryptx/cryptx-cli/internal/email"
 	"github.com/cryptx/cryptx-cli/internal/models"
 	"github.com/cryptx/cryptx-cli/internal/session"
+	"github.com/cryptx/cryptx-cli/internal/upgrade"
 	"github.com/cryptx/cryptx-cli/internal/waha"
 )
 
@@ -65,23 +66,34 @@ type App struct {
 
 	// operator session
 	sess *session.Session
+
+	// build version string (injected from main via NewApp)
+	version string
+
+	// path to a freshly-downloaded binary ready for handover; set just before
+	// tea.Quit so main() can perform the exec replacement after TUI teardown.
+	pendingUpgrade string
 }
+
+// PendingUpgrade returns the temp path of a downloaded binary, if any.
+func (a App) PendingUpgrade() string { return a.pendingUpgrade }
 
 // toastClearMsg clears the toast after a brief delay.
 type toastClearMsg struct{}
 
 // NewApp creates a new root application model.
 // If sess is non-nil the user is already authenticated and the menu is shown.
-func NewApp(svc *aw.Services, wahaClient *waha.Client, sess *session.Session) App {
+func NewApp(svc *aw.Services, wahaClient *waha.Client, sess *session.Session, version string) App {
 	app := App{
-		svc:  svc,
-		waha: wahaClient,
-		sess: sess,
-		login: NewLoginModel(),
+		svc:     svc,
+		waha:    wahaClient,
+		sess:    sess,
+		version: version,
+		login:   NewLoginModel(),
 	}
 	if sess != nil {
 		app.screen = ScreenMenu
-		app.menu = NewMenuModel(sess.UserEmail)
+		app.menu = NewMenuModel(sess.UserEmail, version)
 	} else {
 		app.screen = ScreenLogin
 	}
@@ -194,13 +206,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, tea.Batch(cmds...)
 		}
 		a.screen = ScreenMenu
-		a.menu = NewMenuModel(a.sess.UserEmail)
+		a.menu = NewMenuModel(a.sess.UserEmail, a.version)
 		return a, nil
 
 	// ── Skip verification → go to menu ────────────────────────────────────
 	case SkipVerifyMsg:
 		a.screen = ScreenMenu
-		a.menu = NewMenuModel(a.sess.UserEmail)
+		a.menu = NewMenuModel(a.sess.UserEmail, a.version)
 		return a, nil
 
 	// ── OAuth requested → start OAuth flow ───────────────────────────────
@@ -218,7 +230,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.sess = msg.sess
 		a.svc = aw.NewWithSession(a.svc.Config(), msg.sess.SessionSecret)
 		a.screen = ScreenMenu
-		a.menu = NewMenuModel(a.sess.UserEmail)
+		a.menu = NewMenuModel(a.sess.UserEmail, a.version)
 		return a, nil
 
 	// ── Menu selection ────────────────────────────────────────────────────
@@ -232,6 +244,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.analyser = NewAnalyserModel(a.width, a.height)
 			a.screen = ScreenAnalyser
 			return a, tea.Batch(a.analyser.Init(), a.doAnalyse())
+		}
+		if msg.Event == EventUpgrade {
+			a.toast = "Checking for updates…"
+			a.toastErr = false
+			return a, a.doUpgradeCheck()
 		}
 		a.activeEvent = msg.Event
 		a.list = NewListModel(msg.Event, a.width, a.height)
@@ -383,6 +400,36 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmds = append(cmds, clearToastCmd())
 
+	// ── Self-upgrade: check result ────────────────────────────────────────
+	case upgradeCheckDoneMsg:
+		if msg.err != nil {
+			a.toast = "Update check failed: " + msg.err.Error()
+			a.toastErr = true
+			return a, clearToastCmd()
+		}
+		if msg.downloadURL == "" {
+			a.toast = "Already on the latest version (" + a.version + ")"
+			a.toastErr = false
+			return a, clearToastCmd()
+		}
+		a.toast = "Downloading " + msg.version + "…"
+		a.toastErr = false
+		return a, a.doUpgradeDownload(msg.downloadURL)
+
+	// ── Self-upgrade: download result ─────────────────────────────────────
+	case upgradeDownloadDoneMsg:
+		if msg.err != nil {
+			a.toast = "Update download failed: " + msg.err.Error()
+			a.toastErr = true
+			return a, clearToastCmd()
+		}
+		// Store the temp path and quit; main() will perform the exec handover
+		// after Bubbletea cleans up the terminal.
+		a.pendingUpgrade = msg.binPath
+		a.toast = "Update ready — restarting…"
+		a.toastErr = false
+		return a, tea.Quit
+
 	// ── Compose: send via Resend ───────────────────────────────────────────
 	case composeSendViaResendMsg:
 		return a, a.doSendResend(msg)
@@ -504,6 +551,17 @@ type actionDoneMsg struct {
 type downloadDoneMsg struct {
 	savedPath string
 	err       error
+}
+
+type upgradeCheckDoneMsg struct {
+	version     string
+	downloadURL string
+	err         error
+}
+
+type upgradeDownloadDoneMsg struct {
+	binPath string
+	err     error
 }
 
 func (a App) doLogin(emailAddr, password string) tea.Cmd {
@@ -924,6 +982,38 @@ func clearToastCmd() tea.Cmd {
 		return toastClearMsg{}
 	})
 }
+
+// ── Self-upgrade commands ─────────────────────────────────────────────────────
+
+// doUpgradeCheck fetches the latest GitHub release and, if a newer version
+// exists, returns the download URL for the current platform asset.
+func (a App) doUpgradeCheck() tea.Cmd {
+	currentVersion := a.version
+	return func() tea.Msg {
+		rel, err := upgrade.FetchLatest()
+		if err != nil {
+			return upgradeCheckDoneMsg{err: err}
+		}
+		// If the tag matches the running version there's nothing to do.
+		if rel.TagName == currentVersion || rel.TagName == "v"+currentVersion {
+			return upgradeCheckDoneMsg{version: rel.TagName}
+		}
+		url, err := upgrade.FindAsset(rel)
+		if err != nil {
+			return upgradeCheckDoneMsg{err: err}
+		}
+		return upgradeCheckDoneMsg{version: rel.TagName, downloadURL: url}
+	}
+}
+
+// doUpgradeDownload downloads the new binary to a temp file.
+func (a App) doUpgradeDownload(downloadURL string) tea.Cmd {
+	return func() tea.Msg {
+		path, err := upgrade.Download(downloadURL)
+		return upgradeDownloadDoneMsg{binPath: path, err: err}
+	}
+}
+
 
 // doSendResend calls the Resend API from a background goroutine.
 func (a App) doSendResend(msg composeSendViaResendMsg) tea.Cmd {
