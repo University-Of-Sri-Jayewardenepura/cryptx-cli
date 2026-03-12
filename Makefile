@@ -21,7 +21,7 @@ release: clean
 		GOARCH="$${platform#*/}"; \
 		ext=""; \
 		if [ "$$GOOS" = "windows" ]; then ext=".exe"; fi; \
-		out="$(DIST)/$(BINARY)-$$GOOS-$$GOARCH$$ext"; \
+		out="$(DIST)/$(BINARY)-$(VERSION)-$$GOOS-$$GOARCH$$ext"; \
 		echo "Building $$out"; \
 		CGO_ENABLED=0 GOOS="$$GOOS" GOARCH="$$GOARCH" go build $(GO_BUILD_FLAGS) -o "$$out" .; \
 	done
