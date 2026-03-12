@@ -2,21 +2,38 @@
 
 A terminal UI (TUI) admin tool for managing CryptX 2.0 event registrations stored in Appwrite. Built with Go and Charm's Bubble Tea framework.
 
-```
-  ◈  CryptX 2.0 — Registration Manager
+## Required Environment Variables
 
-  Select an event to manage:
+The following environment variables are required for the tool to function correctly. Ensure these are set in your `.env` file:
 
-  [1]  CTF Registrations         Capture The Flag — Individual & Team
-  [2]  School Hackathon          School teams competing in hacking challenges
-  [3]  Designathon               University design competition teams
+| Variable                                      | Description                                                              |
+| --------------------------------------------- | ------------------------------------------------------------------------ |
+| `APPWRITE_ENDPOINT`                           | Appwrite endpoint URL (e.g., `https://cloud.appwrite.io/v1`)             |
+| `APPWRITE_PROJECT_ID`                         | Appwrite project ID                                                      |
+| `APPWRITE_DATABASE_ID`                        | Appwrite database ID                                                     |
+| `APPWRITE_CTF_COLLECTION_ID`                  | Collection ID for CTF registrations                                      |
+| `APPWRITE_SCHOOL_HACKATHON_COLLECTION_ID`     | Collection ID for School Hackathon registrations                         |
+| `APPWRITE_UNIVERSITY_HACKATHON_COLLECTION_ID` | Collection ID for University Hackathon registrations                     |
+| `APPWRITE_DESIGNATHON_COLLECTION_ID`          | Collection ID for Designathon registrations                              |
+| `APPWRITE_CTF_BUCKET_ID`                      | Storage bucket for CTF payment slips                                     |
+| `APPWRITE_HACKATHON_SCHOOL_BUCKET_ID`         | Storage bucket for School Hackathon team logos                           |
+| `APPWRITE_HACKATHON_UNIVERSITY_BUCKET_ID`     | Storage bucket for University Hackathon team logos                       |
+| `APPWRITE_DESIGNATHON_BUCKET_ID`              | Storage bucket for Designathon team logos                                |
+| `RESEND_API_KEY`                              | Resend API key for email confirmations                                   |
+| `WAHA_BASE_URL`                               | Base URL for WhatsApp HTTP API (optional; leave empty to disable checks) |
+| `WAHA_API_KEY`                                | API key for WhatsApp HTTP API                                            |
+| `WAHA_SESSION`                                | WhatsApp session ID                                                      |
+| `WAHA_CTF_GROUP_ID`                           | WhatsApp group ID for CTF                                                |
+| `WAHA_SCHOOL_HACKATHON_GROUP_ID`              | WhatsApp group ID for School Hackathon                                   |
+| `WAHA_UNIVERSITY_HACKATHON_GROUP_ID`          | WhatsApp group ID for University Hackathon                               |
+| `WAHA_DESIGNATHON_GROUP_ID`                   | WhatsApp group ID for Designathon                                        |
 
-  ↑↓/jk navigate  enter select  1-3 quick select  q quit
-```
+---
+
 
 ## Features
 
-- **Paginated list views** of CTF, School Hackathon, and Designathon registrations
+- **Paginated list views** of CTF, School Hackathon, and Designathon registrations, merch store
 - **Full detail view** with all fields, member breakdowns, and file info
 - **Payment confirmation** — marks a registration confirmed in Appwrite and sends a styled HTML email to the registrant
 - **Delete registrations** with confirmation prompt
@@ -589,3 +606,31 @@ go build -ldflags="-s -w" -o cryptx-cli .
 ## License
 
 MIT — see [LICENSE](LICENSE) for details.
+
+## Required Environment Variables
+
+The following environment variables are required for the tool to function correctly. Ensure these are set in your `.env` file:
+
+| Variable                                      | Description                                                              |
+| --------------------------------------------- | ------------------------------------------------------------------------ |
+| `APPWRITE_ENDPOINT`                           | Appwrite endpoint URL (e.g., `https://cloud.appwrite.io/v1`)             |
+| `APPWRITE_PROJECT_ID`                         | Appwrite project ID                                                      |
+| `APPWRITE_DATABASE_ID`                        | Appwrite database ID                                                     |
+| `APPWRITE_CTF_COLLECTION_ID`                  | Collection ID for CTF registrations                                      |
+| `APPWRITE_SCHOOL_HACKATHON_COLLECTION_ID`     | Collection ID for School Hackathon registrations                         |
+| `APPWRITE_UNIVERSITY_HACKATHON_COLLECTION_ID` | Collection ID for University Hackathon registrations                     |
+| `APPWRITE_DESIGNATHON_COLLECTION_ID`          | Collection ID for Designathon registrations                              |
+| `APPWRITE_CTF_BUCKET_ID`                      | Storage bucket for CTF payment slips                                     |
+| `APPWRITE_HACKATHON_SCHOOL_BUCKET_ID`         | Storage bucket for School Hackathon team logos                           |
+| `APPWRITE_HACKATHON_UNIVERSITY_BUCKET_ID`     | Storage bucket for University Hackathon team logos                       |
+| `APPWRITE_DESIGNATHON_BUCKET_ID`              | Storage bucket for Designathon team logos                                |
+| `RESEND_API_KEY`                              | Resend API key for email confirmations                                   |
+| `WAHA_BASE_URL`                               | Base URL for WhatsApp HTTP API (optional; leave empty to disable checks) |
+| `WAHA_API_KEY`                                | API key for WhatsApp HTTP API                                            |
+| `WAHA_SESSION`                                | WhatsApp session ID                                                      |
+| `WAHA_CTF_GROUP_ID`                           | WhatsApp group ID for CTF                                                |
+| `WAHA_SCHOOL_HACKATHON_GROUP_ID`              | WhatsApp group ID for School Hackathon                                   |
+| `WAHA_UNIVERSITY_HACKATHON_GROUP_ID`          | WhatsApp group ID for University Hackathon                               |
+| `WAHA_DESIGNATHON_GROUP_ID`                   | WhatsApp group ID for Designathon                                        |
+
+---
